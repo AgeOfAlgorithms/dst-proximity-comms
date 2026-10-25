@@ -1,0 +1,6 @@
+[h2]0.2.0[/h2]
+[list]
+[*][b]Fixed: a crash a few seconds after joining[/b], since Don't Starve Together's update of October 22. Sorry about that!
+[*][b]AI characters for other mods:[/b] mods can now add characters that players talk to (typed or spoken) and that answer and act, played by an admin's Koetama with its large language model. Their replies show like anyone's - speech bubbles, range, the chat, translation. For mod makers: GLOBAL.ProxComms, see the README.
+[*]Works with Koetama 0.5.12.
+[/list]

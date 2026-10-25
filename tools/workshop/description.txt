@@ -1,0 +1,62 @@
+[h1]Proximity Comms: Text and Voice Chat[/h1]
+
+Proximity chat for Don't Starve Together, on keyboard or controller. What you say reaches the players near you, in a speech bubble over your head, and a little farther away it comes through garbled.
+
+With the free [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url] app running next to the game you also get [b]proximity voice chat[/b], [b]live captions[/b] and [b]offline translation[/b] of the chat. Without it, the text chat works fully.
+
+[h2]Modes[/h2]
+[table]
+[tr][th]Mode[/th][th]Who gets it[/th][/tr]
+[tr][td][b]Whisper[/b][/td][td]players within 8 tiles; garbled up to 11 tiles[/td][/tr]
+[tr][td][b]Speak[/b][/td][td]players within 18 tiles; up to 25 tiles they see it garbled (⬚ for the letters they don't make out - walk closer to read it)[/td][/tr]
+[tr][td][b]Yell[/b][/td][td]players within 32 tiles; garbled up to 44 tiles[/td][/tr]
+[tr][td][b]Global[/b][/td][td]everyone (the game's own chat)[/td][/tr]
+[/table]
+The host sets the Whisper, Speak and Yell distances in the mod's settings, and admins can change them in game ([b]/pc range[/b], or the settings). A Speak or Yell line is only sent to the players close enough to hear it - nobody else's game ever gets it.
+
+[h2]What you see[/h2]
+[list]
+[*]Lines over heads in see-through speech bubbles (their opacity and text size are settings), in a round, easy to read font, or in the game's own hand-drawn look. The bubble's tail points at whoever is talking and follows them. Long lines scroll, and when the speaker is off screen their line sits on the screen edge on their side, with their name. Lines never cover each other.
+[*]Your chat history holds only what [i]you[/i] heard, as you heard it: every player's history is different.
+[*]Lines have the same colours as in the chat history (Yell orange, Whisper grey). Yell is bigger, Whisper smaller, and a line in ALL CAPS shakes.
+[*]Ghosts chat as usual.
+[/list]
+
+[h2]How to use it[/h2]
+[list]
+[*][b]Enter[/b] opens the chat line, and Enter sends (the game's Y and U can be switched back on in the settings). The mode shows where the game says "say:" - [b]Tab[/b] or a click changes it, and it is kept for next time. [b]Up / Down[/b] bring back your last lines.
+[*][b]Controller:[/b] the command wheel has a [b]Quick chat[/b] folder - Callouts, Questions, Replies, Things, Players, Insults, Social, Survival, every line with its own picture. [b]X[/b] opens a folder, or adds a line to your message and goes back to the main wheel (build sentences like "Where? Food"), [b]Y[/b] takes the last word back, [b]A[/b] sends, [b]B[/b] goes back or cancels, [b]hold B[/b] cancels, [b]LT / RT[/b] change the chat mode. Press the command wheel button twice to go straight to Quick chat. Settings: the wheel's Miscellaneous window.
+[*][b]/s /y /w /g[/b] choose the mode, or say one line in it: [i]/y over here![/i]
+[*][b]/pc settings[/b] (or the button at the end of the chat line): chat, voice and translation settings.
+[*][b]/pc mute <name>[/b], [b]/pc volume <name> <0-150>[/b] - only for you.
+[*][b]/pc dummy[/b]: three test figures (a whisperer, a speaker and a yeller) that take turns talking, to try every range alone.
+[/list]
+
+[h2]Voice chat, live captions and translation (Koetama)[/h2]
+[url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url] is a free, open source app for Windows and Linux that runs next to the game. Start it and it links up by itself.
+[list]
+[*][b]Voice:[/b] hear the players near you from where they stand, louder up close, in the same modes as the text. In Global, what you say is written into the Global chat - no one hears it. Each player's volume is yours to set (settings: Players). Push to talk on [b]V[/b] (changeable), or always on (Voice settings; always on with a controller). Hold [b]V[/b] and press [b]Tab[/b] to change the mode: a strip at the bottom of the screen shows it.
+[*][b]Live captions:[/b] what you say is written live in the speech bubbles - players without Koetama see it too.
+[*][b]Translation:[/b] chat in a language you don't speak is translated on your PC, into the language you pick in Koetama.
+[/list]
+
+[h2]Privacy[/h2]
+This mod talks only to Koetama on your own PC (127.0.0.1) and never contacts anything else. Koetama sends voices end-to-end encrypted through a relay, in a room only the players of your world know. Speech to text and translation run on your PC.
+
+[h2]Languages[/h2]
+The mod's own text is in English, Simplified Chinese and Russian (it follows the game's language).
+
+[h2]中文[/h2]
+近距离聊天：悄悄话（8 格）、说话（18 格）和大喊（32 格）只有附近的玩家能看到，再远一点只能看到模糊的字；全体是所有人。长句会在气泡里滚动，说话者在屏幕外时气泡贴在屏幕边缘。每个人的聊天记录只包含自己听到的内容。手柄：命令轮盘里的“快捷聊天”。配合免费程序 [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]：近距离语音聊天、实时字幕和离线翻译。命令：/s /y /w /g，/pc help。
+
+[h2]Русский[/h2]
+Чат рядом: шёпот (8 клеток), речь (18 клеток) и крик (32 клетки) видят только игроки поблизости, чуть дальше — неразборчивые буквы; «всем» — все. Длинные реплики прокручиваются, реплики говорящих за краем экрана прижимаются к краю. У каждого игрока своя история чата — только то, что он слышал. Геймпад: «Быстрый чат» в колесе команд. С бесплатной программой [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]: голосовой чат рядом, живые субтитры и офлайн-перевод. Команды: /s /y /w /g, /pc help.
+
+[h2]For mod makers[/h2]
+Every Speak and Yell line raises [b]proxcomms_said[/b] on the server's world (player, userid, mode, text, voice, x, z, range, reach).
+
+[b]AI characters for your mod:[/b] [b]GLOBAL.ProxComms.agent(id, {persona, name, entity, hears, functions, onCall, ...})[/b] puts a character in the world that players talk to and that answers and acts, played by an admin's Koetama and its large language model. Its replies are said like a player's: bubbles, range, chat, translation. The full API: README.md in the mod's folder.
+
+The wheel's pictures are made with Noto Emoji, and the bubbles' font is Pangolin (both SIL Open Font License 1.1).
+
+MIT License.

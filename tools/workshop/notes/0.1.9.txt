@@ -1,0 +1,4 @@
+[h2]0.1.9[/h2]
+[list]
+[*][b]Translations from afar:[/b] a line you hear garbled is now translated too - the translation is garbled the same way, and fills in as you walk closer.
+[/list]

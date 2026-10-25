@@ -1,0 +1,6 @@
+[h2]0.1.6[/h2]
+[list]
+[*][b]Players page[/b] in the settings: every other player's voice volume (0-150 %, only for you), each with a Reset.
+[*][b]Global is text only:[/b] what you type or say in Global goes to everyone as text, and no one hears your voice.
+[*]The settings window's title is no longer hidden behind its tabs; the Translate page explains where to change the language.
+[/list]

@@ -1,0 +1,4 @@
+[h2]0.1.8[/h2]
+[list]
+[*][b]Translations, easier to read:[/b] the original line is now much smaller than its translation, in the speech bubble and in the chat history.
+[/list]

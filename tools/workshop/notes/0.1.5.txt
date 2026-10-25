@@ -1,0 +1,6 @@
+[h2]0.1.5[/h2]
+[list]
+[*][b]Hold V and press Tab[/b] to change the mode (Whisper, Speak, Yell, Global) without opening the chat: a strip at the bottom of the screen shows the modes, the current one lit, while V is held. Tab alone still opens the player list.
+[*]The microphone's "Auto" setting now says what it does on a keyboard: push to talk. For voice without holding V, pick [b]Always on[/b] (settings, Voice page).
+[*][b]Fixed:[/b] white specks around the letters in the speech bubbles.
+[/list]

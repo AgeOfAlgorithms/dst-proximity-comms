@@ -1,0 +1,4 @@
+pangolin.ttf is the Teardown mod's (teardown-mods/proxchat): Pangolin Regular (github.com/googlefonts/pangolin, SIL
+Open Font License 1.1, see OFL.txt; no Reserved Font Name) with one glyph added: U+2B1A (a hollow box), for the
+chat's half-heard letters. tools/make_font.py draws it into the game's font format (fonts/pc_pangolin.zip; the sheet
+it draws: pc_pangolin_0.png).

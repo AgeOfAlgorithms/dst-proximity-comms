@@ -1,0 +1,4 @@
+[h2]0.1.7[/h2]
+[list]
+[*][b]Translations[/b] are now the big text in the speech bubble, with the original line smaller above them.
+[/list]
