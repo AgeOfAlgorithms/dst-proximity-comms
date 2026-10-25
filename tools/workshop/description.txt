@@ -55,8 +55,8 @@ The mod's own text is in English, Simplified Chinese and Russian (it follows the
 [h2]For mod makers[/h2]
 Every Speak and Yell line raises [b]proxcomms_said[/b] on the server's world (player, userid, mode, text, voice, x, z, range, reach).
 
-[b]AI characters for your mod:[/b] [b]GLOBAL.ProxComms.agent(id, {persona, name, entity, hears, functions, onCall, ...})[/b] puts a character in the world that players talk to and that answers and acts, played by an admin's Koetama and its large language model. Its replies are said like a player's: bubbles, range, chat, translation. The full API: README.md in the mod's folder.
+[b]AI characters for your mod:[/b] [b]GLOBAL.ProxComms.agent(id, {persona, name, entity, hears, functions, onCall, ...})[/b] puts a character in the world that players talk to and that answers and acts, played by an admin's Koetama and its large language model. Its replies are said like a player's: bubbles, range, chat, translation. The full API: [url=https://github.com/AgeOfAlgorithms/dst-proximity-comms#agents-ai-characters]the README on GitHub[/url] (also README.md in the mod's folder).
 
 The wheel's pictures are made with Noto Emoji, and the bubbles' font is Pangolin (both SIL Open Font License 1.1).
 
-MIT License.
+MIT License. Source: [url=https://github.com/AgeOfAlgorithms/dst-proximity-comms]github.com/AgeOfAlgorithms/dst-proximity-comms[/url]
