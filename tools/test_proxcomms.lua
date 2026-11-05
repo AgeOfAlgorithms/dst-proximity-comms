@@ -738,6 +738,7 @@ do
     local ln = lastTo("line")
     check(ln and ln.args[1] == "agent:pigking:1" and ln.args[2] == "Pig King" and ln.args[3] == "Follow? Bring meat first!"
         and ln.args[4] == "s", "the server: said as a Speak line from it")
+    eq(ln.args[12], "", "with its entity's prefab (this one has none)")
     local to = {}
     for _, u in ipairs(ln.to) do to[u] = true end
     check(to.KU_me and to.KU_ana and not to.KU_dee, "to the players within its reach")
@@ -758,6 +759,55 @@ do
     -- the client: an agent's line shows as anyone's (its own uid)
     CL.onLine("agent:pigking:1", "Pig King", "Oink!", "s", 77001, 12, 0, false)
     check(CL.bubbles["agent:pigking:1"] and CL.bubbles["agent:pigking:1"].cur.level == "full", "the client: its bubble")
+    -- its bubble follows the entity it speaks from (the user, 2026-11-05): the line carries its prefab, the client
+    -- finds the nearest of it there and keeps it
+    local function ent(prefab, x, z)
+        local e = {prefab = prefab, x = x, z = z, IsValid = function() return true end}
+        e.Transform = {GetWorldPosition = function() return e.x, 0, e.z end}
+        return e
+    end
+    local kingFar, king, other = ent("pigking", 15, 0), ent("pigking", 12.5, 0), ent("pigman", 12, 0)
+    local findCalls = 0
+    TheSim.FindEntities = function(_, x, y, z, r)
+        findCalls = findCalls + 1
+        local out = {}
+        for _, e in ipairs({kingFar, king, other}) do if (e.x - x) ^ 2 + (e.z - z) ^ 2 <= r * r then out[#out + 1] = e end end
+        return out
+    end
+    CL.onLine("agent:pigking:1", "Pig King", "Oink oink!", "s", 77004, 12, 0, false, 0, "", 0, "pigking")
+    eq(CL.entity("agent:pigking:1"), king, "an agent's line with its prefab: the nearest of it is its entity")
+    king.x = 14
+    eq(CL.entity("agent:pigking:1"), king, "it walks off: still its entity (the bubble follows it)")
+    check(CL.distTo("agent:pigking:1", 12, 0) and math.abs(CL.distTo("agent:pigking:1", 12, 0) - CL.distTo("agent:pigking:1", 14, 0)) < 1e-6,
+        "the distance from where it is now")
+    local n0 = findCalls
+    CL.onLive("agent:pigking:1", "Pig King", 2, "Oi", "s", 13.5, 0, "pigking")
+    check(findCalls == n0 and CL.entity("agent:pigking:1") == king, "the next line near it: the same one, not looked for again")
+    king.x = 40
+    CL.onLine("agent:pigking:1", "Pig King", "Far!", "s", 77005, 15, 0, false, 0, "", 0, "pigking")
+    eq(CL.entity("agent:pigking:1"), kingFar, "its line far from the one it had: found again")
+    CL.onLine("agent:pigking:1", "Pig King", "Nowhere", "s", 77006, 100, 100, false, 0, "", 0, "pigking")
+    eq(CL.entity("agent:pigking:1"), nil, "none of it there: none (the bubble stays where it was said)")
+    CL.onLine("KU_bob", "Bob", "hi", "s", 77007, 12, 0, false, 0, "", 0, "pigking")
+    eq(CL.agentEnts.KU_bob, nil, "a player's line: never tracked as an agent")
+    -- (two of one prefab side by side - two slimes; the user saw their bubbles fight): the one with the agent's name,
+    -- never one another agent has
+    local blub, gummy, e1, e2 = ent("chattyslime", 20, 0), ent("chattyslime", 20.5, 0), ent("pigman", 30, 0), ent("pigman", 30.3, 0)
+    blub.GetDisplayName = function() return "Blub" end
+    gummy.GetDisplayName = function() return "Gummy" end
+    TheSim.FindEntities = function(_, x, y, z, r)
+        local out = {}
+        for _, e in ipairs({blub, gummy, e1, e2}) do if (e.x - x) ^ 2 + (e.z - z) ^ 2 <= r * r then out[#out + 1] = e end end
+        return out
+    end
+    CL.onLine("agent:gummy:1", "Gummy", "Hi", "s", 77010, 20, 0, false, 0, "", 0, "chattyslime")
+    CL.onLine("agent:blub:1", "Blub", "Hey", "s", 77011, 20.5, 0, false, 0, "", 0, "chattyslime")
+    check(CL.entity("agent:gummy:1") == gummy and CL.entity("agent:blub:1") == blub,
+        "two slimes side by side: each its own (by name, not by the nearest)")
+    CL.onLine("agent:gus:1", "Gus", "Hi", "s", 77012, 30, 0, false, 0, "", 0, "pigman")
+    CL.onLine("agent:mira:1", "Mira", "Hi", "s", 77013, 30, 0, false, 0, "", 0, "pigman")
+    check(CL.entity("agent:gus:1") == e1 and CL.entity("agent:mira:1") == e2, "no names: never one another agent has")
+    TheSim.FindEntities = nil
     history = {}
     CL.onLine("agent:pigking:1", "Pig King", "Hear ye, all!", "g", 77002, 0, 0, false)
     check(#history == 1 and history[1].text == "Hear ye, all!", "its Global line: in the history")
@@ -772,6 +822,7 @@ do
     f = {}
     AG.feed(f)
     check(f.agents and f.to_agent and f.to_agent[1].id ~= id2 and f.to_agent[1].text == "again?", "unknown_agent: its definition and the line again")
+    eq(AG.brain.lineFrom[f.to_agent[1].id], "KU_bob", "who said it: kept under its new id (a reply's from, a call's)")
     sentToServer = {}
     AG.onReply({type = "agent_reply", final = true, ids = {f.to_agent[1].id}, agent = "pigking:1", text = "", calls = {},
         error = "budget", why = "the month's tokens are used up"})
@@ -794,6 +845,185 @@ do
     local lines = ups("line")
     check(#lines == 3 and lines[1].t.text == "you said: Oink oink." and lines[2].t.text == "Bob gave you meat"
         and lines[3].t.text == "Pig King, happy now?", "its next line: what it said and the note first, once")
+    -- ---- API 2: scores (the Teardown mod's API 19)
+    local function upsFor(kind, kid)
+        local out = {}
+        for _, u in ipairs(ups(kind)) do if u.t.kid == kid then out[#out + 1] = u end end
+        return out
+    end
+    local function feedFor(kid)
+        local fd = {}
+        AG.feed(fd)
+        local def, lines = nil, {}
+        for _, x in ipairs(fd.agents or {}) do if x.id == kid then def = x end end
+        for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
+        return fd, def, lines
+    end
+    eq(AG.API, 2, "agents: API 2")
+    AG.note("pigking", "a note")
+    eq(AG.noted("pigking"), 1, "noted: a note waiting")
+    AG.note("pigking", nil)
+    check(AG.noted("pigking") == 0 and AG.noted("nobody") == 0, "note(id, nil): taken back")
+    local scored, skips = {}, {}
+    sentToClient = {}
+    local okD, warn = AG.define("dog", {persona = "You are Rex, a dog.", name = "Rex", entity = pig, hears = "near",
+        criteria = {{name = "topic", description = "Rex is the topic"}, {name = "food", description = "it is about food"}},
+        onScores = function(sc, info) scored[#scored + 1] = {sc = sc, info = info} return sc.topic >= 0.5 end,
+        onSkip = function(info) skips[#skips + 1] = info end})
+    local dd = upsFor("def", "dog:1")[1]
+    check(okD and not warn and dd and dd.t.criteria and #dd.t.criteria == 2 and dd.t.criteria[1].name == "topic",
+        "criteria: in its definition")
+    local okB, warnB = AG.define("dog2", {persona = "x", criteria = {{name = "Bad Name", description = "d"}}})
+    check(okB and warnB and warnB:find("nothing is scored") and AG.agents.dog2.criteria == nil,
+        "bad criteria: defined, nothing scored, the mod told why")
+    check(select(2, AG.define("dog2", {persona = "x", criteria = {{name = "a"}}})) ~= nil, "a criterion without a description: told")
+    AG.define("dog2", nil)
+    -- the brain sends criteria only to a Koetama that scores, and tells every shard whether it does
+    sentToServer = {}
+    AG.onHello({llm = true})
+    AG.onUp("def", J.encode(dd.t))
+    local _, dogDef = feedFor("dog:1")
+    check(dogDef and dogDef.criteria == nil, "a Koetama that doesn't score: no criteria in the feed")
+    check(downs("caps")[1] and downs("caps")[1].scores == false, "caps: it doesn't score")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true})
+    _, dogDef = feedFor("dog:1")
+    check(dogDef and dogDef.criteria and dogDef.criteria[2].name == "food", "one that scores: the criteria")
+    local caps = downs("caps")[1]
+    check(caps and caps.scores == true, "caps: it scores - to every shard")
+    check(not AG.scoring(), "(before the shard hears it: not yet)")
+    AG.onDown(ana, "caps", J.encode(caps))
+    check(AG.scoring(), "ProxComms.scores(): true")
+    -- a note goes as context (no reason by itself to answer: the turn stays scored); the line, count 0
+    AG.note("dog", "Bob petted you")
+    sentToClient = {}
+    AG.hear("KU_bob", "Bob", "good boy Rex", "s", 11, 0)
+    local dl = upsFor("line", "dog:1")
+    check(#dl == 2 and dl[1].t.context == true and dl[1].t.text == "Bob petted you" and dl[2].t.context == nil
+        and dl[2].t.depth == 0, "the note as context, then the line (count 0)")
+    for _, x in ipairs(dl) do AG.onUp("line", J.encode(x.t)) end
+    local _, _, fl = feedFor("dog:1")
+    check(#fl == 2 and fl[1].context == true and fl[1].from == nil and fl[2].context == nil and fl[2].from.id == "KU_bob",
+        "the feed: the note with context, the line without")
+    -- Koetama's scores: to its shard, whose mod decides; the decision in the feed until Koetama has it
+    sentToServer = {}
+    AG.onScores({type = "agent_scores", agent = "dog:1", turn = 7, ids = {fl[1].id, fl[2].id},
+        scores = {topic = 0.9, food = 0.1, ["bad key"] = 1, big = 3}})
+    local sd = downs("scores")[1]
+    check(sd and sd.kid == "dog:1" and sd.turn == 7 and sd.scores.topic == 0.9 and sd.scores["bad key"] == nil
+        and sd.scores.big == 1 and sd.from[1] == "KU_bob" and #sd.from == 1, "agent_scores: to its shard (who said it)")
+    check(sd and sd.text[1] == "[Bob petted you]" and sd.text[2] == "Bob: good boy Rex", "with what was said")
+    AG.onScores({agent = "nobody:1", turn = 1, ids = {}, scores = {}})
+    eq(#downs("scores"), 1, "scores for an agent it doesn't know: dropped")
+    sentToClient = {}
+    AG.handle("scores", sd)
+    check(scored[1] and scored[1].sc.topic == 0.9 and scored[1].info.turn == 7 and scored[1].info.from[1] == "KU_bob"
+        and scored[1].info.text[2] == "Bob: good boy Rex", "the mod's onScores")
+    local dc = upsFor("decide", "dog:1")[1]
+    check(dc and dc.t.turn == 7 and dc.t.answer == true, "it returned true: answer, back to the brain")
+    AG.onUp("decide", J.encode(dc.t))
+    local fd = feedFor("dog:1")
+    check(fd.agent_decisions and fd.agent_decisions[1].agent == "dog:1" and fd.agent_decisions[1].turn == 7
+        and fd.agent_decisions[1].answer == true, "the feed: agent_decisions")
+    check(AG.busy(), "a decision waiting: feed often")
+    AG.onReceived({agent_decisions = {7}})
+    fd = feedFor("dog:1")
+    check(not fd.agent_decisions, "Koetama has it: not sent again")
+    AG.onUp("decide", J.encode({kid = "dog:1", turn = 7, answer = false}))
+    fd = feedFor("dog:1")
+    check(not fd.agent_decisions, "a decision for a turn not waiting: ignored")
+    -- answered: said, count 1 (the note doesn't count); the turn over
+    sentToServer = {}
+    AG.onReply({type = "agent_reply", final = true, ids = {fl[1].id, fl[2].id}, agent = "dog:1", text = "Woof!", calls = {}, error = ""})
+    local ds = downs("say")[1]
+    check(ds and ds.text == "Woof!" and ds.depth == 1 and ds.from[1] == "KU_bob", "answered: said, count 1")
+    eq(#AG.brain.decisions, 0, "its turn over: the decision dropped")
+    -- skipped: low scores, nothing said, no engagement, the mod told
+    sentToClient = {}
+    AG.hear("KU_cid", "Cid", "nice weather", "s", 11, 0)
+    local l3 = upsFor("line", "dog:1")[1]
+    AG.onUp("line", J.encode(l3.t))
+    local id3 = AG.brain.n
+    sentToServer = {}
+    AG.onScores({agent = "dog:1", turn = 8, ids = {id3}, scores = {topic = 0.1, food = 0}})
+    sentToClient = {}
+    AG.handle("scores", downs("scores")[1])
+    local dc2 = upsFor("decide", "dog:1")[1]
+    check(dc2 and dc2.t.turn == 8 and dc2.t.answer == false, "low scores: the mod skips")
+    AG.onUp("decide", J.encode(dc2.t))
+    sentToServer = {}
+    AG.onReply({type = "agent_reply", agent = "dog:1", final = true, ids = {id3}, text = "", calls = {}, error = "", skipped = true})
+    local sk = downs("skip")[1]
+    check(#downs("say") == 0 and sk and sk.kid == "dog:1" and sk.from[1] == "KU_cid", "skipped: nothing said, the skip to its shard")
+    TheWorld.events = {}
+    AG.handle("skip", sk)
+    check(AG.agents.dog.skipn == 1 and skips[1] and skips[1].from[1] == "KU_cid", "skipn counted, the mod's onSkip")
+    check(TheWorld.events[1] and TheWorld.events[1][1] == "proxcomms_agent_skip", "and the world event")
+    check(not (AG.eng.dog and AG.eng.dog.KU_cid), "not engaged with Cid for it")
+    -- a decision later: onScores returns nil, then ProxComms.decide
+    AG.agents.dog.onScores = function() return nil end
+    sentToServer = {}
+    AG.onScores({agent = "dog:1", turn = 9, ids = {id3}, scores = {topic = 0.5}})
+    sentToClient = {}
+    AG.handle("scores", downs("scores")[1])
+    eq(#upsFor("decide", "dog:1"), 0, "onScores nil: no decision yet")
+    check(AG.decide("dog", 9, true) and upsFor("decide", "dog:1")[1].t.turn == 9, "ProxComms.decide: later")
+    check(not AG.decide("nobody", 9, true), "decide: an unknown agent refused")
+    AG.onHello({llm = true, agent_scores = true})
+    eq(next(AG.brain.scorePending), nil, "a new hello: turns waiting forgotten (Koetama numbers them afresh)")
+    AG.define("dog", nil)
+    -- ---- API 2: agents hear agents (the Teardown mod's API 20) - counted, so their talk ends
+    local spot = {Transform = {GetWorldPosition = function() return 13, 0, 0 end}, IsValid = function() return true end}
+    AG.define("gus", {persona = "You are Gus.", name = "Gus", entity = spot, hears = "near", hearagents = 2})
+    AG.define("mira", {persona = "You are Mira.", name = "Mira", entity = spot, hears = "near", hearagents = 2})
+    AG.define("deaf", {persona = "You are deaf to agents.", name = "Deaf", entity = spot, hears = "near"})
+    check(AG.agents.gus.hearagents == 2 and AG.agents.deaf.hearagents == 0, "hearagents (none: 0)")
+    AG.define("big", {persona = "x", hearagents = 999})
+    eq(AG.agents.big.hearagents, 50, "hearagents at most 50")
+    AG.define("big", nil)
+    sentToClient = {}
+    AG.handle("say", {kid = "gus:1", text = "Lovely day, Mira!", from = {"KU_bob"}, lines = {}, depth = 1})
+    check(#AG.later == 1 and #upsFor("line", "mira:1") == 0, "an agent's line: the others hear it after a pause to read it")
+    advance(0.5)
+    AG.laterTick()
+    eq(#upsFor("line", "mira:1"), 0, "not yet")
+    advance(5)
+    AG.laterTick()
+    local ml = upsFor("line", "mira:1")[1]
+    check(ml and ml.t.from.id == "agent:gus:1" and ml.t.from.name == "Gus" and ml.t.depth == 1, "then Mira hears Gus (count 1)")
+    eq(#upsFor("line", "gus:1"), 0, "never itself")
+    eq(#upsFor("line", "deaf:1"), 0, "an agent without hearagents: not")
+    eq(#upsFor("line", "pigking:1"), 0, "nor the Pig King")
+    AG.onUp("line", J.encode(ml.t))
+    local mid = AG.brain.n
+    sentToServer = {}
+    AG.onReply({type = "agent_reply", agent = "mira:1", final = true, ids = {mid}, text = "It is, Gus.", calls = {}, error = ""})
+    local ms = downs("say")[1]
+    check(ms and ms.depth == 2 and ms.from[1] == "agent:gus:1", "her answer: count 2 (it answers Gus)")
+    sentToClient = {}
+    AG.handle("say", ms)
+    check(AG.eng.mira and AG.eng.mira["agent:gus:1"], "engaged with Gus")
+    advance(5)
+    AG.laterTick()
+    local gl = upsFor("line", "gus:1")[1]
+    check(gl and gl.t.depth == 2 and gl.t.from.id == "agent:mira:1", "Gus hears it (count 2: his hearagents)")
+    sentToClient = {}
+    AG.handle("say", {kid = "gus:1", text = "Indeed.", from = {"agent:mira:1"}, lines = {}, depth = 3})
+    advance(5)
+    AG.laterTick()
+    check(#AG.later == 0 and #upsFor("line", "mira:1") == 0, "count 3, past their hearagents: the talk ends")
+    sentToClient = {}
+    AG.say("gus", "Hm.")
+    advance(5)
+    AG.laterTick()
+    local sl = upsFor("line", "mira:1")
+    check(#sl == 1 and sl[1].t.depth == 1 and sl[1].t.text == "Hm.", "a say: count 1")
+    sentToClient = {}
+    AG.hear("KU_bob", "Bob", "hi all", "s", 13, 0)
+    check(upsFor("line", "gus:1")[1] and upsFor("line", "gus:1")[2].t.depth == 0, "a player's line: count 0 again (after Gus's own said line)")
+    AG.define("gus", nil)
+    AG.define("mira", nil)
+    AG.define("deaf", nil)
     -- on another shard: through the shards
     sentToClient, sentToShard = {}, {}
     local mePlayers = AllPlayers
@@ -807,6 +1037,7 @@ do
     AG.onLlm(ana, false)
     eq(AG.owner, nil, "the admin's language model off: no brain")
     eq(AG.status(), "off", "agents: off")
+    check(not AG.scoring(), "no brain: no scores")
     clientTable[2].admin = nil
     AG.onOwner(false)
 end
@@ -1258,6 +1489,20 @@ do
     view:OnUpdate(0.03)
     local a2, c2 = view.pool["KU_ana:cur"], view.pool["KU_cid:cur"]
     check(a2 and c2 and math.abs(a2.y - c2.y) >= 20, "overlapping bubbles are stacked")
+    -- (the user, 2026-11-05: bubbles "fighting for placement and flickering rapidly" - two speakers at one height,
+    --  their heads bobbing: the stack must keep its order)
+    local function higher() return view.pool["KU_ana:cur"].y > view.pool["KU_cid:cur"].y and "ana" or "cid" end
+    local h0, flips = higher(), 0
+    for i = 1, 10 do
+        ana.z, cid.z = (i % 2 == 0) and 0.1 or -0.1, (i % 2 == 0) and -0.1 or 0.1
+        view:OnUpdate(0.03)
+        if higher() ~= h0 then flips = flips + 1 end
+    end
+    eq(flips, 0, "two heads bobbing at one height: the stack keeps its order (no flicker)")
+    ana.z, cid.z = (h0 == "ana") and 3 or -3, 0
+    view:OnUpdate(0.03)
+    check(higher() == "cid" or h0 == "cid", "one really lower than the other: re-stacked by height")
+    ana.z, cid.z = 0, 0
     local low, high = a2, c2
     if a2.y > c2.y then low, high = c2, a2 end
     check(low.box.shown and high.box.shown and low.box.tint[4] == 0.6, "Clear: each bubble on a see-through box (60 %)")

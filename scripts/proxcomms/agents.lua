@@ -13,12 +13,30 @@
 --                               string or a function returning one: what it should know now), max_words, stream (false:
 --                               no live words), character (false: not a character - the persona is the whole prompt),
 --                               onCall(call) (return "ok: ..." / "error: ..." now, or nil and ProxComms.result later),
---                               onReply(text, info), onError(code, why)
---   ProxComms.event(id, text)   a line for it to hear from the game; .note(id, text): with its next line, once;
+--                               onReply(text, info), onError(code, why);
+--                               (API 2, the Teardown mod's API 19-20 - the user, 2026-11-05) criteria (a list of up to 8
+--                               {name, description}: each turn of players' lines scored 0-1 on each before it is
+--                               answered) with onScores(scores, info) (return true: answer, false: skip, nil: decide
+--                               later with ProxComms.decide - no decision in 3 s: answered) and onSkip(info);
+--                               hearagents (1-50: it hears the other agents too, up to that many agent lines in a row)
+--   ProxComms.event(id, text)   a line for it to hear from the game; .note(id, text): with its next line, once
+--                               (API 2: .note(id, nil) takes them back; .noted(id): how many still wait);
 --   ProxComms.say(id, text)     it says this without the model (the model hears of it with its next line);
 --   ProxComms.forget(id)        its conversation starts over; .result(callId, text): a call's answer;
 --   ProxComms.status()          "ready" / "busy" / "budget" / "error" / "off"
---   World events: proxcomms_agent_call (a call), proxcomms_said (its line said: .agent set), proxcomms_agent_error.
+--   ProxComms.scores()          (API 2) true: the brain's Koetama scores turns (criteria do something);
+--   ProxComms.decide(id, turn, answer)  (API 2) a decision on a scored turn (info.turn), when onScores returned nil
+--   World events: proxcomms_agent_call (a call), proxcomms_said (its line said: .agent set), proxcomms_agent_error,
+--   proxcomms_agent_skip (API 2: a scored turn the mod skipped).
+--
+-- SCORES (API 2): with criteria, a brain whose Koetama names "agent_scores" in its hello sends them in the definition;
+-- Koetama scores each turn made only of players' (or agents') lines and context notes, and the turn waits for the mod's
+-- decision (agent_scores -> the agent's shard -> onScores -> agent_decisions). Notes and "you said" lines go as context
+-- (no reason by themselves to answer); a mod's event always gets an answer, never scored. A skipped turn: no words, no
+-- engagement, its lines kept by Koetama for the next answered turn.
+-- AGENTS HEARING AGENTS (API 2): a player's line or an event is count 0; an agent's line answering lines of count n is
+-- n + 1 (a say: 1). An agent with hearagents N hears another agent's line (by its own hears rule, a moment after it is
+-- said - time to read it) while its count is at most N, so their talk ends unless someone speaks again.
 --
 -- WHOSE KOETAMA: an ADMIN's whose language model is on for Don't Starve Together (its hello names "llm"): its game
 -- sends "llm" to its shard's server, the master shard picks one (the one already chosen, else the lowest id; a candidate
@@ -32,7 +50,7 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 1                       -- ProxComms.version
+A.API = 2                       -- ProxComms.version (2: scores, agents hearing agents)
 A.LINE_LIFE = 60                -- s a line waits for its reply (the brain)
 A.LINES_MAX = 32
 A.SEND_FOR = 5                  -- s definitions go in the feed after a hello or a change, before agents_known
@@ -43,6 +61,9 @@ A.REPLY_MAX = 600
 A.HEARS = {near = true, named = true, engaged = true, all = true, none = true}
 A.MODES = {whisper = "w", w = "w", speak = "s", s = "s", yell = "y", shout = "y", y = "y", global = "g", g = "g"}
 A.PREFIX = "agent:"             -- an agent's speaker id in lines (uid "agent:<kid>")
+A.HEAR_AGENTS_MAX = 50          -- hearagents at most
+A.PAUSE_MIN, A.PAUSE_PER_CHAR, A.PAUSE_MAX = 1, 0.04, 4   -- s before other agents hear an agent's line (reading it)
+A.LATER_MAX = 32                -- agents' lines waiting to be heard by other agents, at most
 
 -- the game's side, set by modmain / tests
 A.S, A.CL, A.K = nil, nil, nil
@@ -76,6 +97,8 @@ A.state = "ready"      -- the brain's agent_status
 A.cands = {}           -- (master) userid -> last heard
 A.calls = {}           -- call id -> {id (agent), t}
 A.eng = {}             -- id -> userid -> when it was named / answered
+A.scores = false       -- the brain's Koetama scores turns (its "caps", on every shard)
+A.later = {}           -- agents' lines other agents will hear: {due, uid, name, text, mode, x, z, depth, by}
 
 function A.isLocal(uid)
     for _, p in ipairs(AllPlayers or {}) do
@@ -87,6 +110,30 @@ end
 function A.status()
     if not A.owner then return "off" end
     return A.state or "ready"
+end
+
+-- (API) the brain's Koetama scores turns: an agent's criteria do something
+function A.scoring()
+    return A.owner ~= nil and A.scores == true
+end
+
+-- a definition's criteria as Koetama takes them: 1-8 {name (a-z 0-9 _, at most 32, each once), description (cut to
+-- 300 bytes)}; nil and why when it isn't that (nil, nil: none given)
+local function criteriaOf(c)
+    if c == nil then return nil end
+    if type(c) == "string" then c = J.decode(c) end
+    if type(c) ~= "table" or #c == 0 or #c > 8 then return nil, "criteria: a list of 1 to 8 {name, description}" end
+    local out, seen = J.array({}), {}
+    for _, x in ipairs(c) do
+        local n, d = type(x) == "table" and x.name, type(x) == "table" and x.description
+        if type(n) ~= "string" or not n:find("^[a-z0-9_]+$") or #n > 32 or seen[n] then
+            return nil, "criteria: a bad or repeated name (a-z 0-9 _, at most 32)"
+        end
+        if type(d) ~= "string" or d == "" then return nil, "criteria: " .. n .. " has no description" end
+        seen[n] = true
+        out[#out + 1] = {name = n, description = T.cutBytes(d, 300)}
+    end
+    return out
 end
 
 -- a definition's functions as a list (a Lua list, or JSON): empty "required" lists dropped (they would go as {})
@@ -108,6 +155,7 @@ end
 local function defOf(a)
     local d = {kid = a.kid, persona = a.persona, max_words = a.max_words, character = a.character, stream = a.stream}
     if a.functions and #a.functions > 0 then d.functions = a.functions end
+    if a.criteria then d.criteria = a.criteria end
     return d
 end
 
@@ -154,13 +202,19 @@ function A.define(id, def)
     a.stream = def.stream ~= false
     a.character = def.character ~= false
     a.onCall, a.onReply, a.onError = def.onCall, def.onReply, def.onError
+    a.onScores, a.onSkip = def.onScores, def.onSkip
+    local crit, why = criteriaOf(def.criteria)
+    a.criteria = crit
+    a.hearagents = math.max(0, math.min(A.HEAR_AGENTS_MAX, math.floor(tonumber(def.hearagents) or 0)))
+    a.skipn = a.skipn or 0
     A.agents[id] = a
     local sig = J.encode(defOf(a))
     if sig ~= a.sig then
         a.sig = sig
         A.up("def", defOf(a))
     end
-    return true
+    if why then print("[ProxComms] agent " .. id .. ": " .. why .. " - nothing is scored") end
+    return true, why and (why .. " - nothing is scored") or nil
 end
 
 -- where an agent is (x, z), or nil: its entity while valid, else the place it was given
@@ -173,6 +227,14 @@ function A.posOf(a)
     end
     if a.x and a.z then return a.x, a.z end
     return a.lastX, a.lastZ
+end
+
+-- the prefab of the entity it speaks from ("" for none): each line and live words carry it, so the players' games find
+-- that entity near where it was said and keep its bubble over it as it moves (CL.trackAgent)
+function A.prefabOf(a)
+    local e = a.entity
+    if e and e.prefab and (not e.IsValid or e:IsValid()) then return tostring(e.prefab) end
+    return ""
 end
 
 -- its name said in a line ("Pig King, ..." - any case, whole words)
@@ -198,34 +260,69 @@ local function stateOf(a)
     return T.cutBytes(s, 2048)
 end
 
--- (server) a line for an agent: what it said without the model and the mod's note first (as events, once each)
-function A.lineUp(a, text, from)
+-- (server) a line for an agent: what it said without the model and the mod's note first (as context events, once
+-- each: what it should know, no reason by themselves to answer - a scored turn stays scored). depth: the line's count
+-- of agent lines in a row (0: a player's, an event)
+function A.lineUp(a, text, from, depth)
     text = T.cutBytes(tostring(text or ""), 400)
     if text == "" then return end
-    for _, said in ipairs(a.said) do A.up("line", {kid = a.kid, text = T.cutBytes("you said: " .. said, 400)}) end
+    for _, said in ipairs(a.said) do
+        A.up("line", {kid = a.kid, text = T.cutBytes("you said: " .. said, 400), context = true})
+    end
     a.said = {}
-    for _, note in ipairs(a.notes) do A.up("line", {kid = a.kid, text = note}) end
+    for _, note in ipairs(a.notes) do A.up("line", {kid = a.kid, text = note, context = true}) end
     a.notes = {}
-    A.up("line", {kid = a.kid, text = text, from = from, state = stateOf(a)})
+    A.up("line", {kid = a.kid, text = text, from = from, state = stateOf(a), depth = depth or 0})
 end
 
--- (server) a player (uid, name) said text in mode at x, z: the agents that hear it get it
-function A.hear(uid, name, text, mode, x, z)
+-- (server) a player (uid, name) said text in mode at x, z: the agents that hear it get it. depth (API 2): an agent's
+-- line (uid "agent:<kid>", by its id) - its count of agent lines in a row; only the others whose hearagents reaches it
+function A.hear(uid, name, text, mode, x, z, depth, by)
     if not A.owner or type(text) ~= "string" or text == "" then return end
+    depth = depth or 0
     local t = now()
     for id, a in pairs(A.agents) do
-        local hear = a.hears == "all"
-        local named = (a.hears == "named" or a.hears == "engaged") and A.named(text, a.name)
-        local eng = A.eng[id] and A.eng[id][uid]
-        local engaged = a.hears == "engaged" and eng ~= nil and t - eng <= A.ENGAGED
-        if (a.hears == "near" or named or engaged) and mode ~= "g" and x and z then
-            local ax, az = A.posOf(a)
-            local r = A.S.ranges[mode] or A.S.ranges.s
-            hear = ax ~= nil and (ax - x) ^ 2 + (az - z) ^ 2 <= (r[1] + 1) ^ 2
+        if depth == 0 or (id ~= by and a.hearagents >= depth) then
+            local hear = a.hears == "all"
+            local named = (a.hears == "named" or a.hears == "engaged") and A.named(text, a.name)
+            local eng = A.eng[id] and A.eng[id][uid]
+            local engaged = a.hears == "engaged" and eng ~= nil and t - eng <= A.ENGAGED
+            if (a.hears == "near" or named or engaged) and mode ~= "g" and x and z then
+                local ax, az = A.posOf(a)
+                local r = A.S.ranges[mode] or A.S.ranges.s
+                hear = ax ~= nil and (ax - x) ^ 2 + (az - z) ^ 2 <= (r[1] + 1) ^ 2
+            end
+            if hear then
+                if named then A.eng[id] = A.eng[id] or {} A.eng[id][uid] = t end
+                A.lineUp(a, text, {id = uid, name = name}, depth)
+            end
         end
-        if hear then
-            if named then A.eng[id] = A.eng[id] or {} A.eng[id][uid] = t end
-            A.lineUp(a, text, {id = uid, name = name})
+    end
+end
+
+-- (server, API 2) an agent's line said: the other agents that hear agents get it after a pause to read it
+function A.toAgents(a, text, depth, x, z)
+    local any = false
+    for id, o in pairs(A.agents) do
+        if id ~= a.id and o.hearagents >= depth then any = true break end
+    end
+    if not any then return end
+    local wait = math.max(A.PAUSE_MIN, math.min(A.PAUSE_MAX, #T.units(text) * A.PAUSE_PER_CHAR))
+    A.later[#A.later + 1] = {due = now() + wait, uid = A.PREFIX .. a.kid, name = a.name, text = text, mode = a.mode,
+        x = x, z = z, depth = depth, by = a.id}
+    while #A.later > A.LATER_MAX do table.remove(A.later, 1) end
+end
+
+-- (server) the agents' lines read by now: heard
+function A.laterTick()
+    local t, i = now(), 1
+    while A.later[i] do
+        local l = A.later[i]
+        if t >= l.due then
+            table.remove(A.later, i)
+            A.hear(l.uid, l.name, l.text, l.mode, l.x, l.z, l.depth, l.by)
+        else
+            i = i + 1
         end
     end
 end
@@ -252,11 +349,13 @@ function A.deliver(a, text, info)
     A.S.lineId = A.S.lineId + 1
     local uid = A.PREFIX .. a.kid
     if to == nil or #to > 0 then
-        SendModRPCToClient(clientRPC("line"), to, uid, a.name, text, mode, A.S.lineId, x or 0, z or 0, false, 0, "", 0)
+        SendModRPCToClient(clientRPC("line"), to, uid, a.name, text, mode, A.S.lineId, x or 0, z or 0, false, 0, "", 0,
+            A.prefabOf(a))
     end
     local heard = to and #to or #(AllPlayers or {})
     info = info or {}
     info.heard = heard
+    if info.depth then A.toAgents(a, text, info.depth, x, z) end
     if type(a.onReply) == "function" then pcall(a.onReply, text, info) end
     if TheWorld then
         TheWorld:PushEvent("proxcomms_said", {agent = a.id, userid = uid, mode = mode, text = text, x = x, z = z,
@@ -272,7 +371,7 @@ function A.say(id, text)
     if not a or type(text) ~= "string" then return false end
     for line in (text .. "\n"):gmatch("([^\n]*)\n") do
         if line ~= "" then
-            A.deliver(a, line, {from = {}, lines = {}, scripted = true})
+            A.deliver(a, line, {from = {}, lines = {}, scripted = true, depth = 1})
             a.said[#a.said + 1] = line
             while #a.said > 3 do table.remove(a.said, 1) end
         end
@@ -287,11 +386,22 @@ function A.event(id, text)
     return true
 end
 
+-- (API) what it should know with its next line, once; (API 2) text nil: the notes waiting taken back (a mod that sends
+-- them as an event instead when no line came in time)
 function A.note(id, text)
     local a = A.agents[id]
-    if not a or type(text) ~= "string" or text == "" then return false end
+    if not a then return false end
+    if text == nil then a.notes = {} return true end
+    if type(text) ~= "string" or text == "" then return false end
     a.notes[#a.notes + 1] = T.cutBytes(text, 400)
+    while #a.notes > 8 do table.remove(a.notes, 1) end
     return true
+end
+
+-- (API 2) how many of its notes still wait for a line (0: a line took them)
+function A.noted(id)
+    local a = A.agents[id]
+    return a and #a.notes or 0
 end
 
 function A.forget(id)
@@ -310,6 +420,14 @@ function A.result(callId, text)
     return true
 end
 
+-- (API 2) the mod's decision on a scored turn (onScores' info.turn): answer it (true) or skip it
+function A.decide(id, turn, answer)
+    local a = A.agents[id]
+    if not a or not tonumber(turn) then return false end
+    A.up("decide", {kid = a.kid, turn = tonumber(turn), answer = answer == true})
+    return true
+end
+
 -- (server) from the brain, for an agent of this shard (or the status, for every shard)
 function A.handle(kind, t)
     if type(t) ~= "table" then return end
@@ -319,6 +437,10 @@ function A.handle(kind, t)
     end
     if kind == "sync" then                              -- (the brain asks for every definition: a new brain, a hello)
         for _, a in pairs(A.agents) do A.up("def", defOf(a)) end
+        return
+    end
+    if kind == "caps" then                              -- (API 2: what the brain's Koetama does)
+        A.scores = t.scores == true
         return
     end
     local id, shard = A.split(t.kid)
@@ -332,12 +454,33 @@ function A.handle(kind, t)
         for _, uid in ipairs(from) do
             if type(uid) == "string" then A.eng[id] = A.eng[id] or {} A.eng[id][uid] = tm end
         end
-        if type(t.text) == "string" and t.text ~= "" then A.deliver(a, t.text, {from = from, lines = lines}) end
+        if type(t.text) == "string" and t.text ~= "" then
+            local depth = math.max(1, math.min(1000, math.floor(tonumber(t.depth) or 1)))
+            A.deliver(a, t.text, {from = from, lines = lines, depth = depth})
+        end
+    elseif kind == "skip" then                          -- (API 2: a scored turn the mod skipped - nothing said)
+        a.skipn = (a.skipn or 0) + 1
+        local info = {from = from, lines = lines}
+        if type(a.onSkip) == "function" then pcall(a.onSkip, info) end
+        if TheWorld then TheWorld:PushEvent("proxcomms_agent_skip", {agent = id, from = from, lines = lines}) end
+    elseif kind == "scores" then                        -- (API 2: a turn scored; the mod decides)
+        local turn = tonumber(t.turn)
+        if not turn then return end
+        local scores = {}
+        for k, v in pairs(type(t.scores) == "table" and t.scores or {}) do
+            if type(k) == "string" and tonumber(v) then scores[k] = math.max(0, math.min(1, tonumber(v))) end
+        end
+        local info = {turn = turn, from = from, lines = lines, text = type(t.text) == "table" and t.text or {}}
+        if type(a.onScores) == "function" then
+            local ok, r = pcall(a.onScores, scores, info)
+            if ok and (r == true or r == false) then A.decide(id, turn, r)
+            elseif not ok then print("[ProxComms] agent " .. id .. " onScores: " .. tostring(r)) end
+        end
     elseif kind == "live" then
         local x, z = A.posOf(a)
         if a.mode == "g" or not x or type(t.text) ~= "string" then return end
         SendModRPCToClient(clientRPC("live"), A.S.near(x, z, A.S.reach(a.mode)), A.PREFIX .. a.kid, a.name,
-            tonumber(t.utt) or 1, T.clean(T.tail(t.text, 200), 200), a.mode, x, z)
+            tonumber(t.utt) or 1, T.clean(T.tail(t.text, 200), 200), a.mode, x, z, A.prefabOf(a))
     elseif kind == "call" then
         if type(t.call) ~= "string" or type(t.name) ~= "string" then return end
         A.calls[t.call] = {id = id, t = now()}
@@ -362,7 +505,7 @@ function A.onDown(player, kind, s)
     if not uid or uid ~= A.owner or type(kind) ~= "string" or type(s) ~= "string" or #s > 16384 then return end
     local t = J.decode(s)
     if type(t) ~= "table" then return end
-    if kind == "status" or kind == "sync" then
+    if kind == "status" or kind == "sync" or kind == "caps" then
         A.handle(kind, t)
         toShards("agent_down", kind, s)
         return
@@ -375,7 +518,7 @@ function A.onShardDown(shard, kind, s)
     if type(kind) ~= "string" or type(s) ~= "string" then return end
     local t = J.decode(s)
     if type(t) ~= "table" then return end
-    if kind == "status" or kind == "sync" then A.handle(kind, t) return end
+    if kind == "status" or kind == "sync" or kind == "caps" then A.handle(kind, t) return end
     local _, sh = A.split(t.kid)
     if sh == A.shard() then A.handle(kind, t) end
 end
@@ -429,12 +572,13 @@ function A.setOwner(uid)
     A.owner = uid
     if old and old ~= uid and A.isLocal(old) then SendModRPCToClient(clientRPC("agent_owner"), old, false) end
     if uid and A.isLocal(uid) then SendModRPCToClient(clientRPC("agent_owner"), uid, true) end
-    if not uid then A.state = "ready" end
+    if not uid then A.state, A.scores = "ready", false end
 end
 
 -- (server, every second) the master's choice kept fresh; calls the mod never answered dropped
 function A.serverTick()
     if A.S.isMaster() then A.elect() end
+    A.laterTick()
     local t = now()
     for k, c in pairs(A.calls) do
         if t - c.t > A.CALL_LIFE then A.calls[k] = nil end
@@ -444,12 +588,19 @@ end
 -- ==================================================================================== THE BRAIN (the admin's game)
 
 A.brain = {on = false, defs = {}, lines = {}, results = {}, forget = {}, known = nil, sentAt = -1e9, n = 0,
-    lineFrom = {}, liveOn = {}, utt = {}, callIds = {}, llmAt = -1e9, llmSaid = nil}
+    lineFrom = {}, liveOn = {}, utt = {}, callIds = {}, llmAt = -1e9, llmSaid = nil,
+    scores = false, scorePending = {}, decisions = {}, lineDepth = {}}   -- (API 2: scores, decisions, agent lines' counts)
 
 local function B() return A.brain end
 
 function A.down(kind, t)
     if A.CL then A.CL.rpc("agent_down", kind, J.encode(t or {})) end
+end
+
+-- (API 2) what this brain's Koetama does, to every shard
+local function sendCaps()
+    local b = B()
+    A.down("caps", {scores = b.scores == true and b.llm == true})
 end
 
 -- (client RPC) this game is the brain now (or no longer)
@@ -459,8 +610,10 @@ function A.onOwner(on)
     if b.on then
         b.sentAt, b.known = now(), nil
         A.down("sync", {})
+        sendCaps()
     else
         b.defs, b.lines, b.results, b.forget = {}, {}, {}, {}
+        b.scorePending, b.decisions = {}, {}
     end
 end
 
@@ -475,7 +628,8 @@ function A.onUp(kind, s)
         local d = b.defs[t.kid]
         if not d or d.sig ~= sig then
             local def = {id = t.kid, version = (d and d.def.version or 0) + 1, persona = t.persona,
-                character = t.character ~= false, stream = t.stream ~= false, max_words = t.max_words, functions = t.functions}
+                character = t.character ~= false, stream = t.stream ~= false, max_words = t.max_words, functions = t.functions,
+                criteria = type(t.criteria) == "table" and #t.criteria > 0 and t.criteria or nil}
             b.defs[t.kid] = {sig = sig, def = def}
             b.sentAt = now()
             if A.K then A.K.poke() end
@@ -487,7 +641,11 @@ function A.onUp(kind, s)
         b.lineFrom[b.n] = type(t.from) == "table" and t.from.id or nil
         b.lineFrom[b.n - 300] = nil
         local from = type(t.from) == "table" and {id = tostring(t.from.id), name = tostring(t.from.name or "?")} or nil
-        b.lines[#b.lines + 1] = {id = b.n, agent = t.kid, text = t.text, from = from, state = t.state, t = now()}
+        local context = t.context == true and from == nil or nil
+        b.lineDepth[b.n] = not context and math.max(0, math.floor(tonumber(t.depth) or 0)) or nil   -- (notes don't count)
+        b.lineDepth[b.n - 300] = nil
+        b.lines[#b.lines + 1] = {id = b.n, agent = t.kid, text = t.text, from = from, state = t.state, t = now(),
+            context = context}
         while #b.lines > A.LINES_MAX do table.remove(b.lines, 1) end
         if A.K then A.K.poke() end
     elseif kind == "forget" then
@@ -499,7 +657,42 @@ function A.onUp(kind, s)
             b.callIds[t.call] = nil
             if A.K then A.K.poke() end
         end
+    elseif kind == "decide" then                        -- (API 2: the mod's decision on the turn waiting)
+        local sp = b.scorePending[t.kid]
+        if sp and tonumber(t.turn) == sp.turn then
+            b.scorePending[t.kid] = nil
+            b.decisions[#b.decisions + 1] = {agent = t.kid, turn = sp.turn, answer = t.answer == true, ids = sp.ids, t = now()}
+            while #b.decisions > 32 do table.remove(b.decisions, 1) end
+            if A.K then A.K.poke() end
+        end
     end
+end
+
+-- (the brain's Koetama, API 2) agent_scores: a turn of an agent's lines scored on its criteria - to the agent's shard,
+-- whose mod decides (what was said, by whom, goes with it)
+function A.onScores(o)
+    local b = B()
+    local kid, turn = o.agent, tonumber(o.turn)
+    if type(kid) ~= "string" or not b.defs[kid] or not turn then return end
+    local ids, want = {}, {}
+    for _, x in ipairs(type(o.ids) == "table" and o.ids or {}) do
+        if tonumber(x) then ids[#ids + 1] = tonumber(x) want[tonumber(x)] = true end
+    end
+    table.sort(ids)
+    local from, seen, text = {}, {}, {}
+    for _, l in ipairs(b.lines) do
+        if want[l.id] then
+            local f = b.lineFrom[l.id]
+            if f and f ~= "" and not seen[f] then seen[f] = true from[#from + 1] = f end
+            text[#text + 1] = l.from and ((l.from.name or "?") .. ": " .. l.text) or ("[" .. l.text .. "]")
+        end
+    end
+    local scores = {}
+    for k, v in pairs(type(o.scores) == "table" and o.scores or {}) do
+        if type(k) == "string" and k:find("^[a-z0-9_]+$") and tonumber(v) then scores[k] = math.max(0, math.min(1, tonumber(v))) end
+    end
+    b.scorePending[kid] = {turn = turn, ids = ids, t = now()}
+    A.down("scores", {kid = kid, turn = turn, scores = scores, from = from, lines = ids, text = text})
 end
 
 -- (the brain's Koetama) its hello: definitions again (it keeps them only for its session); the server told
@@ -507,7 +700,10 @@ function A.onHello(features)
     local b = B()
     b.sentAt, b.known = now(), nil
     b.llm = features and features.llm == true or false
+    b.scores = features and features.agent_scores == true or false     -- (API 2: Koetama 0.5.14)
+    b.scorePending, b.decisions = {}, {}         -- (a new Koetama numbers its turns afresh)
     b.llmAt = -1e9                               -- (said to the server at once)
+    if b.on then sendCaps() end
 end
 
 function A.onKnown(o)
@@ -525,6 +721,9 @@ function A.onReceived(o)
     for _, x in ipairs(type(o.agent_results) == "table" and o.agent_results or {}) do if type(x) == "string" then calls[x] = true end end
     for _, l in ipairs(b.lines) do if got[l.id] then l.received = true end end
     for _, r in ipairs(b.results) do if calls[r.call] then r.received = true end end
+    local turns = {}
+    for _, x in ipairs(type(o.agent_decisions) == "table" and o.agent_decisions or {}) do if tonumber(x) then turns[tonumber(x)] = true end end
+    for _, x in ipairs(b.decisions) do if turns[x.turn] then x.received = true end end
 end
 
 function A.onStatus(o)
@@ -544,17 +743,32 @@ function A.feed(f)
         local want
         if b.known then local kv = b.known[d.def.id] want = kv == nil or kv < d.def.version
         else want = t - b.sentAt < A.SEND_FOR end
-        if want and #defs < 32 then defs[#defs + 1] = d.def end
+        if want and #defs < 32 then
+            local def = d.def
+            if def.criteria and not b.scores then          -- (criteria only for a Koetama that scores)
+                def = {}
+                for k, v in pairs(d.def) do def[k] = v end
+                def.criteria = nil
+            end
+            defs[#defs + 1] = def
+        end
     end
     if #defs > 0 then f.agents = defs end
     local lines = J.array({})
     for _, l in ipairs(b.lines) do
-        if #lines < 8 and not l.received then lines[#lines + 1] = {id = l.id, agent = l.agent, text = l.text, from = l.from, state = l.state} end
+        if #lines < 8 and not l.received then
+            lines[#lines + 1] = {id = l.id, agent = l.agent, text = l.text, from = l.from, state = l.state, context = l.context}
+        end
     end
     if #lines > 0 then f.to_agent = lines end
     local res = J.array({})
     for _, r in ipairs(b.results) do if not r.received then res[#res + 1] = {call = r.call, result = r.result} end end
     if #res > 0 then f.agent_results = res end
+    local dec = J.array({})                                -- (API 2: the mods' decisions on scored turns)
+    for _, x in ipairs(b.decisions) do
+        if not x.received and #dec < 32 then dec[#dec + 1] = {agent = x.agent, turn = x.turn, answer = x.answer} end
+    end
+    if #dec > 0 then f.agent_decisions = dec end
     local fg = J.array({})
     for _, x in ipairs(b.forget) do fg[#fg + 1] = x.id end
     if #fg > 0 then f.agent_forget = fg end
@@ -563,7 +777,7 @@ end
 -- (K.active) lines or results waiting: feed often
 function A.busy()
     local b = B()
-    return b.on and (#b.lines > 0 or #b.results > 0) or false
+    return b.on and (#b.lines > 0 or #b.results > 0 or #b.decisions > 0) or false
 end
 
 -- an agent_reply: the lines it answers; its words said (by its server); each call to the mod; an error
@@ -589,6 +803,9 @@ function A.onReply(o)
     for _, x in ipairs(type(o.ids) == "table" and o.ids or {}) do if tonumber(x) then ids[tonumber(x)] = true end end
     local answered = {}
     for i = #b.lines, 1, -1 do if ids[b.lines[i].id] then table.insert(answered, 1, table.remove(b.lines, i)) end end
+    local function done(x) for _, i in ipairs(x.ids or {}) do if ids[i] then return true end end end
+    for i = #b.decisions, 1, -1 do if done(b.decisions[i]) then table.remove(b.decisions, i) end end   -- (its turn is
+    for k, sp in pairs(b.scorePending) do if done(sp) then b.scorePending[k] = nil end end            --  over)
     for i = #b.results, 1, -1 do                        -- (the follow-up came: their results are read)
         for _, x in ipairs(b.results[i].ids or {}) do if ids[x] then table.remove(b.results, i) break end end
     end
@@ -600,6 +817,7 @@ function A.onReply(o)
         for _, l in ipairs(answered) do
             if not l.retried then
                 b.n = b.n + 1
+                b.lineFrom[b.n], b.lineDepth[b.n] = b.lineFrom[l.id], b.lineDepth[l.id]   -- (who said it, its count: kept)
                 l.id, l.received, l.retried, again = b.n, nil, true, true
                 b.lines[#b.lines + 1] = l
             end
@@ -621,7 +839,17 @@ function A.onReply(o)
         A.down("error", {kid = kid, error = err, why = type(o.why) == "string" and o.why:sub(1, 500) or ""})
         return
     end
-    if final ~= "" or #from > 0 then A.down("say", {kid = kid, text = final, from = from, lines = idList}) end
+    if o.skipped == true then                       -- (API 2: the mod skipped this scored turn - nothing said, and it
+        A.down("skip", {kid = kid, from = from, lines = idList})   --  isn't engaged with them for it)
+        return
+    end
+    local depth                                     -- (its count of agent lines in a row: the lowest it answers + 1)
+    for _, x in ipairs(idList) do
+        local ld = b.lineDepth[x]
+        if ld and (not depth or ld < depth) then depth = ld end
+    end
+    depth = (depth or 0) + 1
+    if final ~= "" or #from > 0 then A.down("say", {kid = kid, text = final, from = from, lines = idList, depth = depth}) end
     for _, call in ipairs(type(o.calls) == "table" and o.calls or {}) do
         if type(call) == "table" and type(call.name) == "string" and type(call.call) == "string" then
             b.callIds[call.call] = idList
@@ -639,11 +867,14 @@ function A.clientTick()
         if t - b.lines[i].t > A.LINE_LIFE then table.remove(b.lines, i) end
     end
     for i = #b.forget, 1, -1 do if t - b.forget[i].t > 3 then table.remove(b.forget, i) end end
+    for i = #b.decisions, 1, -1 do if t - b.decisions[i].t > A.LINE_LIFE then table.remove(b.decisions, i) end end
+    for k, sp in pairs(b.scorePending) do if t - sp.t > A.LINE_LIFE then b.scorePending[k] = nil end end
     local K = A.K
     local on = K and K.online == true and b.llm == true or false
     if on and t - b.llmAt >= 10 then
         b.llmAt, b.llmSaid = t, true
         if A.CL then A.CL.rpc("llm", true) end
+        if b.on then sendCaps() end                 -- (kept fresh: a shard that restarted learns it again)
     elseif not on and b.llmSaid then
         b.llmSaid = nil
         if A.CL then A.CL.rpc("llm", false) end

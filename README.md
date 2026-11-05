@@ -112,7 +112,7 @@ lines. Only that admin's Koetama gets what is said near an agent.
 
 ```lua
 -- server: a pig that follows whoever asks ("Pigman, follow me")
-local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 1)
+local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 2)
 ProxComms.agent("pigman", {
     persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 8 KB)
     name = "Pigman",                             -- (in bubbles and the chat)
@@ -137,16 +137,46 @@ ProxComms.agent("pigman", {
   name in the line; `engaged` - named, then anything near from a player it answered or who named it in the last
   30 s; `all` - every line, Global too; `none` - only your events.
 - `ProxComms.event(id, "the alarm went off")` - a line from the game for it to hear (and answer);
-  `ProxComms.note(id, "Wilson fed you")` - what it should know with its next line, once;
+  `ProxComms.note(id, "Wilson fed you")` - what it should know with its next line, once (version 2:
+  `ProxComms.noted(id)` - how many still wait, 0 once a line took them; `ProxComms.note(id, nil)` takes them back, to
+  send them as an event instead when nobody talks to it in time);
   `ProxComms.say(id, "Oink!")` - it says this without the model (scripted lines, a fallback; the model hears of it);
   `ProxComms.forget(id)` - its conversation starts over; `ProxComms.agent(id, nil)` - removed;
   `ProxComms.status()` - `ready`, `busy` (the admin's requests a minute reached: replies come late), `budget` (their
   month is spent), `error`, or `off` (no admin's Koetama with its language model on).
 - Its replies are said like a player's line: a bubble over it, its mode's reach, garbled a bit farther, the chat
   history, translation, live words while the model writes (`stream = false` to turn that off). World events:
-  `proxcomms_said` (with `.agent`), `proxcomms_agent_call`, `proxcomms_agent_error`.
+  `proxcomms_said` (with `.agent`), `proxcomms_agent_call`, `proxcomms_agent_error`, `proxcomms_agent_skip`.
 - More: `max_words` (its longest reply, default 80), `character = false` (not a character in the world - a
   director, a narrator: the persona is the whole prompt).
+- **Scores: your mod decides whether it answers** (version 2; with Koetama 0.5.14 or later - `ProxComms.scores()`
+  is true). An agent that hears everything near it would answer every line. Give it `criteria` and each turn of
+  players' lines is first scored by the model, 0 to 1 on each, and waits for your decision: weigh the scores, add what
+  only your game knows (is the speaker its leader? did it just talk with them?), and answer or skip.
+
+  ```lua
+  ProxComms.agent("pigman", {
+      ...,
+      hears = "near",
+      criteria = {{name = "topic", description = "the Pigman is the topic: someone talks to him or about him"},
+                  {name = "danger", description = "someone is hurt or in danger"}},   -- (1 to 8; names a-z 0-9 _)
+      onScores = function(scores, info)   -- info.from (userids), info.text ("Name: words"), info.lines, info.turn
+          local want = (scores.topic or 0) + (scores.danger or 0) * 0.8
+          if info.from[1] == leaderId then want = want + 0.3 end
+          return want >= 0.7               -- true: answer, false: skip (nil: ProxComms.decide(id, info.turn, yes) later)
+      end,
+      onSkip = function(info) end,         -- (a turn you skipped: nothing said; its lines go with its next answer)
+  })
+  ```
+
+  No decision within 3 s: it answers; if the scoring fails, it answers. Notes and what it said go with the turn as
+  context (no reason by themselves to answer); your `event` lines are never scored and always get an answer. Each
+  scored turn costs one more short request.
+- **Agents hear agents** (version 2): `hearagents = N` (1-50) - it also hears the other agents (by its own `hears`
+  rule), up to N agent lines in a row. A player's line or your event is count 0; an agent's answer to it is 1, an
+  answer to that 2, and so on (a `say` is 1); an agent hears another's line a moment after it is said (time to read it)
+  while its count is at most its `hearagents`. So their talk ends unless a player or your mod speaks again - each line
+  is a request on the admin's budget. Agents show in `call.from` / `info.from` as `"agent:<id>:<shard>"`.
 - **Tell your players** that the characters use an AI and that what they say near them goes to the AI service the
   admin chose. Everything said near an agent ends up in its prompt: a persona can ask the model to refuse things, only
   your checks of its calls can enforce them.

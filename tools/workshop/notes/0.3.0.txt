@@ -1,0 +1,7 @@
+[h2]0.3.0[/h2]
+[list]
+[*][b]Speech bubbles follow AI characters as they move[/b] - before, a character's bubble stayed where it started talking.
+[*][b]No more flickering bubbles[/b] when two speakers stand close together.
+[*][b]For mod makers - AI characters that choose when to answer:[/b] give a character criteria and each thing said near it is scored first; your mod decides whether it answers (needs Koetama 0.5.14).
+[*][b]For mod makers - characters that talk to each other:[/b] hearagents lets characters hear each other for a set number of lines, so their talk ends on its own. See the README.
+[/list]

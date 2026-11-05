@@ -20,6 +20,7 @@ local WRAP = 560          -- the text's width, before the HUD's scale
 local HOLD, PER_LINE = 1.5, 1.8
 local SIZE = 28           -- (FollowText draws chat at 35: a fifth smaller - the user, 2026-10-13: "the fonts are a bit big")
 local MARGIN = 24
+local STICK = 30          -- px a head moves before its bubble's place in the stack is looked at again (no flicker)
 local TR_COLOUR = {1, 0.6, 0.78, 1}
 local TR_ORIGINAL = 0.6   -- a translated line's original, against its translation
 -- the box (images/pc_bubble.xml, tools/make_bubble.py): white, tinted to BOX_RGB at Settings.bubbleOpacity
@@ -223,9 +224,20 @@ function PCBubbles:OnUpdate(dt)
         if not ax then ax, ay = worldPos(it.x, it.z) end
         it.ax, it.ay = ax, ay
     end
-    -- (ties by key: the same order every frame, no flicker between two heads at one height)
+    -- (the stacking order by a sticky height - the user, 2026-11-05: bubbles "fighting for placement and flickering
+    --  rapidly": two speakers' heads at nearly one height, bobbing as they hop or walk, swapped the order every frame.
+    --  Each bubble keeps the height it was sorted by until its head moves more than STICK px from it; ties by key)
+    self.sortY = self.sortY or {}
+    local seen = {}
+    for _, it in ipairs(items) do
+        local was = self.sortY[it.key]
+        local ay = it.ay or 0
+        if was == nil or math.abs(ay - was) > STICK then was = ay end
+        self.sortY[it.key], it.sy, seen[it.key] = was, was, true
+    end
+    for key in pairs(self.sortY) do if not seen[key] then self.sortY[key] = nil end end
     table.sort(items, function(a, b)
-        if (a.ay or 0) ~= (b.ay or 0) then return (a.ay or 0) < (b.ay or 0) end
+        if a.sy ~= b.sy then return a.sy < b.sy end
         return a.key < b.key
     end)
     for _, it in ipairs(items) do

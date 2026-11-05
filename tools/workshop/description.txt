@@ -16,7 +16,7 @@ The host sets the Whisper, Speak and Yell distances in the mod's settings, and a
 
 [h2]What you see[/h2]
 [list]
-[*]Lines over heads in see-through speech bubbles (their opacity and text size are settings), in a round, easy to read font, or in the game's own hand-drawn look. The bubble's tail points at whoever is talking and follows them. Long lines scroll, and when the speaker is off screen their line sits on the screen edge on their side, with their name. Lines never cover each other.
+[*]Lines over heads in see-through speech bubbles (their opacity and text size are settings), in a round, easy to read font, or in the game's own hand-drawn look. The bubble's tail points at whoever is talking and follows them - AI characters' bubbles too, as they walk. Long lines scroll, and when the speaker is off screen their line sits on the screen edge on their side, with their name. Lines never cover each other.
 [*]Your chat history holds only what [i]you[/i] heard, as you heard it: every player's history is different.
 [*]Lines have the same colours as in the chat history (Yell orange, Whisper grey). Yell is bigger, Whisper smaller, and a line in ALL CAPS shakes.
 [*]Ghosts chat as usual.
@@ -55,7 +55,7 @@ The mod's own text is in English, Simplified Chinese and Russian (it follows the
 [h2]For mod makers[/h2]
 Every Speak and Yell line raises [b]proxcomms_said[/b] on the server's world (player, userid, mode, text, voice, x, z, range, reach).
 
-[b]AI characters for your mod:[/b] [b]GLOBAL.ProxComms.agent(id, {persona, name, entity, hears, functions, onCall, ...})[/b] puts a character in the world that players talk to and that answers and acts, played by an admin's Koetama and its large language model. Its replies are said like a player's: bubbles, range, chat, translation. The full API: [url=https://github.com/AgeOfAlgorithms/dst-proximity-comms#agents-ai-characters]the README on GitHub[/url] (also README.md in the mod's folder).
+[b]AI characters for your mod:[/b] [b]GLOBAL.ProxComms.agent(id, {persona, name, entity, hears, functions, onCall, ...})[/b] puts a character in the world that players talk to and that answers and acts, played by an admin's Koetama and its large language model. Its replies are said like a player's: bubbles, range, chat, translation. Characters can [b]choose when to answer[/b] (give them [b]criteria[/b]: each thing said near them is scored first and your mod decides - Koetama 0.5.14 or later) and [b]talk to each other[/b] ([b]hearagents[/b]: for a set number of lines, so their talk ends on its own). The full API: [url=https://github.com/AgeOfAlgorithms/dst-proximity-comms#agents-ai-characters]the README on GitHub[/url] (also README.md in the mod's folder).
 
 The wheel's pictures are made with Noto Emoji, and the bubbles' font is Pangolin (both SIL Open Font License 1.1).
 

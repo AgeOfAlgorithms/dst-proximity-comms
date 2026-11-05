@@ -19,6 +19,8 @@ sleep 2
 rm -f "$LOG"
 sh tools/install.sh
 rm -rf "$DST/mods/proxcomms_devtest" && cp -r tools/devtest/proxcomms_devtest "$DST/mods/"
+# (SCENE_DIR=<folder>: scenes of another mod's repo too, e.g. the Chatty Slime's tools/devtest)
+[ -n "$SCENE_DIR" ] && cp "$SCENE_DIR"/*.lua "$DST/mods/proxcomms_devtest/"
 # (SHOTS=1: the screenshots' scenes, and Steam's screenshot key pressed at each - into $OUT/shots)
 # (SCENE=<name>: tools/devtest/proxcomms_devtest/<name>.lua instead of the checks, with its screenshots too)
 [ -n "$SHOTS" ] && SCENE=shots
@@ -27,6 +29,18 @@ if [ -n "$SCENE" ]; then
     powershell -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w tools/devtest/shots.ps1)" -Log "$(cygpath -w "$LOG")"         -Out "$(cygpath -w "$OUT/shots")" -Seconds 400 > "$OUT/shots.txt" 2>&1 &
 fi
 mkdir -p "$OUT/kprof" && cp koetama/dont-starve-together-proximity-comms.json "$OUT/kprof/"
+# (TEST_PORT=<port>, default 47181: the test Koetama and the game on their own port - a Koetama the user runs keeps the
+# profile's 47170; TEST_PORT=47170 for the profile's own)
+TEST_PORT="${TEST_PORT:-47181}"
+# (a profile file whose id a built-in profile has is skipped - Koetama has this one built in: on another port the copy
+# gets an id of its own, and the test Koetama plays that)
+GAME_ID=dont-starve-together-proximity-comms
+if [ "$TEST_PORT" != 47170 ]; then
+    GAME_ID=dst-proxcomms-devtest       # (a profile id: 3-40 of a-z 0-9 -)
+    sed -i "s/\"port\": 47170/\"port\": $TEST_PORT/; s/\"id\": \"dont-starve-together-proximity-comms\"/\"id\": \"$GAME_ID\"/" \
+        "$OUT/kprof/dont-starve-together-proximity-comms.json"
+fi
+echo "return $TEST_PORT" > "$DST/mods/proxcomms_devtest/port.lua"
 # (FAKE_LLM=1: Koetama's agents ask tools/devtest/fake_llm.py - SCENE=agents)
 LLM_ARGS=""
 if [ -n "$FAKE_LLM" ]; then
@@ -42,7 +56,7 @@ spoken() {
     echo "hello from koetama this is a spoken test line"
     sleep 600
 }
-( spoken | KOETAMA_PROFILES_DIR="$(cygpath -w "$OUT/kprof")" "$KOETAMA" --cli --game dont-starve-together-proximity-comms \
+( spoken | KOETAMA_PROFILES_DIR="$(cygpath -w "$OUT/kprof")" "$KOETAMA" --cli --game "$GAME_ID" \
     --type --volume 0 --lang en --translate-into en --seconds 600 $LLM_ARGS > "$OUT/koetama_test.txt" 2>&1 & )
 sleep 2
 start "" "steam://rungameid/322330"
@@ -54,3 +68,6 @@ while [ $i -lt 200 ]; do
   sleep 3
 done
 grep -a 'PCTEST\|LUA ERROR\|Proximity Comms\]' "$LOG"
+# (what this run started: the fake model and the test Koetama - matched by their command lines, so a Koetama the user
+# runs is never touched)
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*tools/devtest/fake_llm.py*' -or \$_.CommandLine -like '*--cli --game *--seconds 600*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" >/dev/null 2>&1

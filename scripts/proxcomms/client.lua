@@ -112,8 +112,54 @@ function CL.entity(uid)
     for _, p in ipairs(AllPlayers or {}) do
         if p.userid == uid then return p end
     end
+    local a = CL.agentEnts[uid]
+    if a and a.ent and (not a.ent.IsValid or a.ent:IsValid()) then return a.ent end
     if CL.D then return CL.D.entity(uid) end
     return nil
+end
+
+-- (the user, 2026-11-05: "the speech bubbles don't follow the speaker when the speaker moves") an agent speaks from an
+-- entity of another mod (a creature): its line and live words carry that entity's prefab and where it was said, and
+-- this game finds the nearest entity of that prefab there - its bubble then follows it every frame, as a player's.
+-- The one found before is kept while it is still near where the new line was said. None found: the bubble stays
+-- where the line was said (as before)
+CL.agentEnts = {}         -- an agent's uid -> {prefab, ent}
+CL.TRACK_NEAR = 4         -- m from where its line was said
+-- (two of one prefab near each other - two slimes, the user saw their bubbles fight: the one with the agent's name
+-- (a named creature's is its agent's), never one another agent has, then the nearest)
+local function displayName(e)
+    local ok, n = pcall(function() return e.GetDisplayName and e:GetDisplayName() end)
+    return ok and type(n) == "string" and n or nil
+end
+local function takenBy(e, uid)
+    for u, a in pairs(CL.agentEnts) do if u ~= uid and a.ent == e then return true end end
+    return false
+end
+function CL.trackAgent(uid, prefab, x, z, name)
+    if type(uid) ~= "string" or uid:sub(1, 6) ~= "agent:" then return end
+    x, z = tonumber(x), tonumber(z)
+    if type(prefab) ~= "string" or prefab == "" or not (x and z) then CL.agentEnts[uid] = nil return end
+    local r2 = CL.TRACK_NEAR * CL.TRACK_NEAR
+    local cur = CL.agentEnts[uid]
+    if cur and cur.prefab == prefab and cur.ent and cur.ent.Transform and (not cur.ent.IsValid or cur.ent:IsValid())
+        and (type(name) ~= "string" or displayName(cur.ent) == nil or displayName(cur.ent) == name) then
+        local ex, _, ez = cur.ent.Transform:GetWorldPosition()
+        if (ex - x) ^ 2 + (ez - z) ^ 2 <= r2 then return end
+    end
+    local best, bk
+    if TheSim and TheSim.FindEntities then
+        for _, e in ipairs(TheSim:FindEntities(x, 0, z, CL.TRACK_NEAR) or {}) do
+            if e.prefab == prefab and e.Transform and (not e.IsValid or e:IsValid()) then
+                local ex, _, ez = e.Transform:GetWorldPosition()
+                -- (a key to sort by: its name first, then not another agent's, then near)
+                local k = (ex - x) ^ 2 + (ez - z) ^ 2
+                if type(name) == "string" and displayName(e) ~= name then k = k + 1e4 end
+                if takenBy(e, uid) then k = k + 1e6 end
+                if not bk or k < bk then best, bk = e, k end
+            end
+        end
+    end
+    CL.agentEnts[uid] = best and {prefab = prefab, ent = best} or nil
 end
 
 function CL.myPos()
@@ -359,12 +405,13 @@ end
 
 -- ---- arriving lines (client RPCs)
 
--- the server's line: uid, name, text, mode, id, x, z, voice, utt, times, age
-function CL.onLine(uid, name, text, mode, id, x, z, voice, utt, times, age)
+-- the server's line: uid, name, text, mode, id, x, z, voice, utt, times, age (an agent's: and its entity's prefab)
+function CL.onLine(uid, name, text, mode, id, x, z, voice, utt, times, age, prefab)
     if type(uid) ~= "string" or type(text) ~= "string" or not C.validMode(mode) then return end
     -- (Whisper and Global come so only from agents - proxcomms/agents.lua; players' are DST's own chat)
     if (mode == "w" or mode == "g") and uid:sub(1, 6) ~= "agent:" then return end
     if CL.isMuted(uid) then return end
+    if prefab ~= nil then CL.trackAgent(uid, prefab, x, z, name) end
     local now = CL.now()
     local me = CL.me()
     local b = {
@@ -414,8 +461,9 @@ function CL.onLine(uid, name, text, mode, id, x, z, voice, utt, times, age)
 end
 
 -- live words of a line being spoken ("" = they just started)
-function CL.onLive(uid, name, utt, text, mode, x, z)
+function CL.onLive(uid, name, utt, text, mode, x, z, prefab)
     if type(uid) ~= "string" or CL.isMuted(uid) then return end
+    if prefab ~= nil then CL.trackAgent(uid, prefab, x, z, name) end
     CL.live[uid] = {utt = utt, text = CL.filter(T.clean(text or "", 200), uid), mode = mode, t = CL.now(),
         x = tonumber(x), z = tonumber(z), name = name, seed = ((tonumber(utt) or 0) * 7919 + #uid) % 1000003}
 end

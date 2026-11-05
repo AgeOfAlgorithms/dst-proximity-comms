@@ -281,6 +281,8 @@ function K.onObject(o)
         if K.A then K.A.onReply(o) end
     elseif t == "agent_status" then
         if K.A then K.A.onStatus(o) end
+    elseif t == "agent_scores" then                     -- (API 2: a turn scored, waiting for the mod's decision)
+        if K.A then K.A.onScores(o) end
     elseif t == "room" then
         if type(o.room) == "string" and type(o.key) == "string" then
             K.roomOffer, K.roomTries, K.roomAt = {o.room, o.key}, 0, 0

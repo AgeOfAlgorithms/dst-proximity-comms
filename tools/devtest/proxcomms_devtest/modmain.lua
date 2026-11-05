@@ -33,6 +33,16 @@ if G.IsInFrontEnd() then
 end
 
 out("in game: waiting for the lobby")
+-- (run.sh's TEST_PORT: the test Koetama on its own port, so a Koetama the user runs keeps 47170 - port.lua says which.
+-- Only here, in the world: on the main menu Proximity Comms isn't enabled yet and its scripts can't be required)
+if G.kleifileexists(MODROOT .. "port.lua") then
+    local fn = G.kleiloadlua(MODROOT .. "port.lua")
+    local port = type(fn) == "function" and fn() or nil
+    local ok, err = G.pcall(function()
+        G.require("proxcomms/koetama").URL = "http://127.0.0.1:" .. G.tostring(G.tonumber(port)) .. "/"
+    end)
+    out("koetama on port", G.tostring(port), ok and "" or G.tostring(err))
+end
 local spawned = false
 G.staticScheduler:ExecutePeriodic(1, function()
     G.pcall(function() G.TheMixer:SetLevel("master", 0) end)
@@ -52,7 +62,7 @@ AddPlayerPostInit(function(inst)
         started = true
         -- (SHOTS=1: the screenshots' scenes instead of the checks - shots.lua)
         -- (a scene instead: <name>.txt present -> <name>.lua; SHOTS=1 / SCENE=<name> in run.sh)
-        for _, scene in G.ipairs({"shots", "history", "languages", "garbled", "agents"}) do
+        for _, scene in G.ipairs({"shots", "history", "languages", "garbled", "agents", "agents2", "slime", "salamander"}) do
             if G.kleifileexists(MODROOT .. scene .. ".txt") then
                 local fn = G.kleiloadlua(MODROOT .. scene .. ".lua")
                 if type(fn) == "function" then fn(G, out, later) else out("ERROR", scene .. ".lua: " .. G.tostring(fn)) end

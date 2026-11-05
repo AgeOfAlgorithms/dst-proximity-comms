@@ -59,6 +59,36 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   speaker's own game ("heard"). Verified in game with Koetama 0.5.12 and a fake model (devtest SCENE=agents,
   tools/devtest/fake_llm.py): the brain chosen, a named line, the reply bubble and history, a function call answered,
   the follow-up. Not verified: caves (two shards), a real model, streaming live words.
+- **Agent API 2 (the user, 2026-11-05: port Mochi's features to the Chatty Slime / Salamander):** the Teardown mod's
+  API 19 (scores) and 20 (agents hearing agents) for Koetama 0.5.14. `criteria` + `onScores(scores, info)` (true /
+  false / nil and `ProxComms.decide` later) + `onSkip`; `ProxComms.scores()` (the brain's "caps" to every shard, from
+  its hello's `agent_scores`, resent every 10 s); notes and "you said" go as `context` lines (else Koetama, which never
+  scores a turn with a plain event, would answer every note); a `skipped` reply says nothing and engages no one.
+  `hearagents` (0-50): every agent line counts (the brain keeps each line's count: the lowest it answers + 1; a say 1),
+  the others hear it 1-4 s later (`A.later`, the server's 1 s tick) while the count is at most their `hearagents`.
+  The creatures' rules for it (the user, same day): they flee automatically when the AI is off or they are badly hurt,
+  otherwise the AI decides between fighting and fleeing; only the host may order an attack; creatures hear each other
+  by default, 10 lines in a row.
+- **Agents' bubbles follow them (the user, 2026-11-05: "the speech bubbles don't follow the speaker when the speaker
+  moves"):** a player's bubble was placed every frame from the player entity (`CL.entity`), but an agent's only from
+  where its line was said - `CL.entity` knew players and test figures, never agents. Now an agent's line and live words
+  carry its entity's prefab (`A.prefabOf`, the line RPC's 12th / live's 8th argument); the client finds the nearest
+  entity of that prefab within 4 m of where it was said (`CL.trackAgent`, kept while the next line is said near it) and
+  `CL.entity` returns it: the bubble, its tail and the garbling distance follow the creature. (Not an entity in the RPC:
+  DST's own code never sends one to a client.) None found: where it was said, as before. Two of one prefab side by
+  side (two slimes): the one whose display name is the agent's (a named creature's is), never one another agent has.
+- **Bubbles flickering (the user, same day: "the speech bubbles were fighting for placement and they were flickering
+  rapidly"):** the stack was sorted by the heads' screen heights every frame, ties only when exactly equal - two
+  speakers at nearly one height, bobbing as they hop, swapped places every frame. Now each bubble keeps the height it
+  was sorted by until its head moves more than `STICK` (30 px) from it (pc_bubbles.lua); the test bobs two heads
+  +-3 px for 10 frames (5 flips before, 0 now).
+- **devtest (2026-11-05):** `TEST_PORT` (default 47181) - the test Koetama gets the profile on that port and the dev mod
+  points the game at it (`port.lua`, read only once in the world - on the main menu Proximity Comms isn't enabled yet and
+  requiring its scripts there stopped DST with a mod error), so a Koetama the user runs keeps 47170 (one did, and took
+  the game's link: no agents). Koetama skips a profile file whose id a built-in has (this one is built in) and takes
+  ids of 3-40 characters: the copy is `dst-proxcomms-devtest`. The run stops the fake model and the test Koetama it started at the end (one fake model had been left
+  answering since 2026-10-25). Scenes: `agents2` (API 2: a scored dog answered and skipped; two villagers who hear each
+  other, counted).
 - **Fixed (2026-10-25): a crash 5 s after joining since DST's update of 2026-10-22** - the talk key's check asked the
   engine about every CONTROL_* value, and the update added CONTROL_CUSTOM_START (103: the start of mods' controls, no
   control) - an engine assert. Now only values below it (keys.lua).
@@ -92,7 +122,7 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
 | `scripts/screens/pc_settingsscreen.lua` | Chat / Voice / Translate pages |
 | `scripts/components/proxcomms_store.lua` | keeps an admin's ranges in the world's save |
 | `koetama/dont-starve-together-proximity-comms.json` | the Koetama profile (HTTP on 47170, test voices 1-3) |
-| `tools/test_proxcomms.lua` | offline tests (LuaJIT, mocked game, DST's strict globals): 371 checks |
+| `tools/test_proxcomms.lua` | offline tests (LuaJIT, mocked game, DST's strict globals): 661 checks |
 | `tools/probe/` | the QueryServer probe (a client-only mod) and `stub_server.py` (a Koetama stand-in that logs every byte) |
 | `tools/devtest/` | the automated in-game session: `run.sh`, the dev mod `proxcomms_devtest` (never publish) |
 | `tools/install.sh` | copies the mod into DST's `mods/proxcomms`, named "... (local dev)" |
