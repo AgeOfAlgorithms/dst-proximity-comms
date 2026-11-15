@@ -9,7 +9,8 @@
 --   ProxComms.agent(id, def)    define or change an agent (nil: remove). def: persona (required: who it is, up to 8 KB),
 --                               name, entity (an inst: it hears and speaks where it is) or x / z, hears (near - the
 --                               default - / named / engaged / all / none), mode (whisper / speak / yell / global),
---                               functions (a list of {name, description, parameters}, or that list as JSON), state (a
+--                               functions (a list of up to 32 {name, description, parameters}, or that list as JSON:
+--                               API 3 - with an older Koetama only the first 16 go, ProxComms.agentfunctions()), state (a
 --                               string or a function returning one: what it should know now), max_words, stream (false:
 --                               no live words), character (false: not a character - the persona is the whole prompt),
 --                               onCall(call) (return "ok: ..." / "error: ..." now, or nil and ProxComms.result later),
@@ -26,6 +27,8 @@
 --   ProxComms.status()          "ready" / "busy" / "budget" / "error" / "off"
 --   ProxComms.scores()          (API 2) true: the brain's Koetama scores turns (criteria do something);
 --   ProxComms.decide(id, turn, answer)  (API 2) a decision on a scored turn (info.turn), when onScores returned nil
+--   ProxComms.agentfunctions()  (API 3) the functions an agent may have: 16, or 32 once the brain's Koetama says so
+--                               (0.5.15 and later); an agent's functions past that are not sent - put the important first
 --   World events: proxcomms_agent_call (a call), proxcomms_said (its line said: .agent set), proxcomms_agent_error,
 --   proxcomms_agent_skip (API 2: a scored turn the mod skipped).
 --
@@ -50,7 +53,11 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 2                       -- ProxComms.version (2: scores, agents hearing agents)
+A.API = 3                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions)
+-- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
+-- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
+A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
+A.FUNCTIONS_OLD = 16            -- what a Koetama takes whose hello has no agent_functions (0.5.14 and older)
 A.LINE_LIFE = 60                -- s a line waits for its reply (the brain)
 A.LINES_MAX = 32
 A.SEND_FOR = 5                  -- s definitions go in the feed after a hello or a change, before agents_known
@@ -100,6 +107,7 @@ A.cands = {}           -- (master) userid -> last heard
 A.calls = {}           -- call id -> {id (agent), t}
 A.eng = {}             -- id -> userid -> when it was named / answered
 A.scores = false       -- the brain's Koetama scores turns (its "caps", on every shard)
+A.functionsMax = A.FUNCTIONS_OLD   -- the functions an agent may have, as the brain's Koetama says (its "caps")
 A.later = {}           -- agents' lines other agents will hear: {due, uid, name, text, mode, x, z, depth, by}
 
 function A.isLocal(uid)
@@ -112,6 +120,12 @@ end
 function A.status()
     if not A.owner then return "off" end
     return A.state or "ready"
+end
+
+-- (API 3) the functions an agent may have: 16 until the brain's Koetama says more (0.5.15 and later: 32). An agent
+-- defined with more has only its first that many sent (put the ones that matter most first)
+function A.agentFunctions()
+    return A.functionsMax
 end
 
 -- (API) the brain's Koetama scores turns: an agent's criteria do something
@@ -144,7 +158,7 @@ local function functionsOf(f)
     if type(f) ~= "table" then return nil end
     local out = J.array({})
     for _, fn in ipairs(f) do
-        if type(fn) == "table" and type(fn.name) == "string" and #out < 16 then
+        if type(fn) == "table" and type(fn.name) == "string" and #out < A.FUNCTIONS_MAX then
             local p = type(fn.parameters) == "table" and fn.parameters or {type = "object", properties = {}}
             if type(p.required) == "table" and p.required[1] == nil then p.required = nil end
             out[#out + 1] = {name = fn.name, description = tostring(fn.description or ""), parameters = p}
@@ -443,6 +457,8 @@ function A.handle(kind, t)
     end
     if kind == "caps" then                              -- (API 2: what the brain's Koetama does)
         A.scores = t.scores == true
+        local n = math.floor(tonumber(t.functions) or A.FUNCTIONS_OLD)
+        A.functionsMax = math.max(A.FUNCTIONS_OLD, math.min(A.FUNCTIONS_MAX, n))     -- (API 3)
         return
     end
     local id, shard = A.split(t.kid)
@@ -602,7 +618,7 @@ end
 -- (API 2) what this brain's Koetama does, to every shard
 local function sendCaps()
     local b = B()
-    A.down("caps", {scores = b.scores == true and b.llm == true})
+    A.down("caps", {scores = b.scores == true and b.llm == true, functions = b.maxFn or A.FUNCTIONS_OLD})
 end
 
 -- (client RPC) this game is the brain now (or no longer)
@@ -698,11 +714,14 @@ function A.onScores(o)
 end
 
 -- (the brain's Koetama) its hello: definitions again (it keeps them only for its session); the server told
-function A.onHello(features)
+function A.onHello(features, hello)
     local b = B()
     b.sentAt, b.known = now(), nil
     b.llm = features and features.llm == true or false
     b.scores = features and features.agent_scores == true or false     -- (API 2: Koetama 0.5.14)
+    local n = math.floor(tonumber(type(hello) == "table" and hello.agent_functions) or A.FUNCTIONS_OLD)
+    b.maxFn = math.max(1, math.min(A.FUNCTIONS_MAX, n))                -- (API 3: Koetama 0.5.15 says 32)
+    b.cutSaid = {}
     b.scorePending, b.decisions = {}, {}         -- (a new Koetama numbers its turns afresh)
     b.llmAt = -1e9                               -- (said to the server at once)
     if b.on then sendCaps() end
@@ -747,10 +766,23 @@ function A.feed(f)
         else want = t - b.sentAt < A.SEND_FOR end
         if want and #defs < 32 then
             local def = d.def
-            if def.criteria and not b.scores then          -- (criteria only for a Koetama that scores)
+            local maxFn = b.maxFn or A.FUNCTIONS_OLD
+            local cut = type(def.functions) == "table" and #def.functions > maxFn
+            if (def.criteria and not b.scores) or cut then
                 def = {}
                 for k, v in pairs(d.def) do def[k] = v end
-                def.criteria = nil
+                if not b.scores then def.criteria = nil end    -- (criteria only for a Koetama that scores)
+            end
+            if cut then              -- (API 3: more functions than this Koetama takes would leave the agent out)
+                local fns = J.array({})
+                for i = 1, maxFn do fns[i] = d.def.functions[i] end
+                def.functions = fns
+                b.cutSaid = b.cutSaid or {}
+                if not b.cutSaid[def.id] then
+                    b.cutSaid[def.id] = true
+                    print(string.format("[ProxComms] agent %s has %d functions; this Koetama takes %d - the first %d "
+                        .. "sent (Koetama 0.5.15 and later take 32)", def.id, #d.def.functions, maxFn, maxFn))
+                end
             end
             defs[#defs + 1] = def
         end

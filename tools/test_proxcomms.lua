@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 2, "agents: API 2")
+    eq(AG.API, 3, "agents: API 3")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -894,6 +894,36 @@ do
     check(not AG.scoring(), "(before the shard hears it: not yet)")
     AG.onDown(ana, "caps", J.encode(caps))
     check(AG.scoring(), "ProxComms.scores(): true")
+    -- (API 3) functions: up to 32 kept; a Koetama whose hello has no agent_functions gets the first 16 (more would leave
+    -- the agent out), one that says 32 gets them all; the shards hear the limit in the caps
+    eq(AG.agentFunctions(), 16, "agentfunctions(): 16 before Koetama says more")
+    local many = {}
+    for i = 1, 40 do many[i] = {name = "f" .. i, description = "d" .. i, parameters = {type = "object", properties = {}}} end
+    AG.define("cat", {persona = "x", functions = many})
+    local cd = upsFor("def", "cat:1")[1]
+    check(cd and #cd.t.functions == 32 and cd.t.functions[32].name == "f32", "functions: the first 32 of 40 kept")
+    AG.onUp("def", J.encode(cd.t))
+    local _, catDef = feedFor("cat:1")
+    check(catDef and #catDef.functions == 16 and catDef.functions[16].name == "f16" and catDef.criteria == nil,
+        "a Koetama without agent_functions: the first 16 functions")
+    check(#AG.brain.defs["cat:1"].def.functions == 32, "(the brain keeps all 32)")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
+    _, catDef = feedFor("cat:1")
+    check(catDef and #catDef.functions == 32, "Koetama 0.5.15 (agent_functions 32): all 32")
+    local _, dogAgain = feedFor("dog:1")
+    check(dogAgain and dogAgain.criteria and #dogAgain.criteria == 2, "(criteria still go with a cut-free definition)")
+    local caps32 = downs("caps")[1]
+    check(caps32 and caps32.functions == 32 and caps32.scores == true, "caps: 32 functions - to every shard")
+    AG.onDown(ana, "caps", J.encode(caps32))
+    eq(AG.agentFunctions(), 32, "agentfunctions(): 32")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 999}))
+    eq(AG.agentFunctions(), 32, "agentfunctions(): never over 32")
+    AG.onDown(ana, "caps", J.encode({scores = true}))
+    eq(AG.agentFunctions(), 16, "caps without functions (an older brain): 16")
+    AG.onDown(ana, "caps", J.encode(caps32))
+    AG.define("cat", nil)
+    AG.onUp("remove", J.encode({kid = "cat:1"}))
     -- a note goes as context (no reason by itself to answer: the turn stays scored); the line, count 0
     AG.note("dog", "Bob petted you")
     sentToClient = {}

@@ -265,7 +265,7 @@ function K.onObject(o)
         for _, f in ipairs(type(o.features) == "table" and o.features or {}) do K.features[f] = true end
         K.version = tostring(o.version or "")
         K.outdated = C.olderThan(K.version, C.KOETAMA_MIN)
-        if K.A then K.A.onHello(K.features) end
+        if K.A then K.A.onHello(K.features, o) end
         if not K.said.hello then
             K.said.hello = true
             CL.system(L("K_CONNECTED"))

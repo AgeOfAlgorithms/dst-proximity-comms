@@ -1,0 +1,4 @@
+[h2]0.3.3[/h2]
+[list]
+[*][b]For mod makers - AI characters can have up to 32 functions[/b] (was 16) with Koetama 0.5.15 or later. With an older Koetama only a character's first 16 are sent, so it keeps working: put the ones that matter most first. ProxComms.agentfunctions() tells your mod how many it may use. See the README.
+[/list]

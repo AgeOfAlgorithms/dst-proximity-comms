@@ -71,6 +71,12 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   The creatures' rules for it (the user, same day): they flee automatically when the AI is off or they are badly hurt,
   otherwise the AI decides between fighting and fleeing; only the host may order an attack; creatures hear each other
   by default, 10 lines in a row.
+- **Agent API 3 (the user, 2026-11-15: Koetama's tool-calling update, from the koetama-0e session):** Koetama 0.5.15
+  takes up to 32 functions an agent (was 16) and its hello says so (`"agent_functions": 32`; no field: 16 - and an
+  agent over the limit is left out, silent). The mod keeps up to 32 (`A.FUNCTIONS_MAX`); the brain reads the hello's
+  `agent_functions` (`b.maxFn`) and sends an older Koetama only an agent's first 16 (a log line once per agent);
+  the caps carry `functions` to every shard: `ProxComms.agentfunctions()` (16 until then; the Teardown mod's
+  `proxchat.agentfunctions`, API 21, the same day). Nothing else changed in Koetama's agent protocol since 0.5.14.
 - **Agents' bubbles follow them (the user, 2026-11-05: "the speech bubbles don't follow the speaker when the speaker
   moves"):** a player's bubble was placed every frame from the player entity (`CL.entity`), but an agent's only from
   where its line was said - `CL.entity` knew players and test figures, never agents. Now an agent's line and live words
