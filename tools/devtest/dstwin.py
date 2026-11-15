@@ -59,9 +59,10 @@ def launch():
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 4                          # (SW_SHOWNOACTIVATE: shown, the user's window stays active)
-    subprocess.Popen([EXE], cwd=os.path.dirname(EXE), env=env, startupinfo=si,
-                     creationflags=subprocess.DETACHED_PROCESS)
-    print("launched", EXE, flush=True)
+    p = subprocess.Popen([EXE], cwd=os.path.dirname(EXE), env=env, startupinfo=si,
+                         creationflags=subprocess.DETACHED_PROCESS)
+    # (its PID, last on the line: run.sh closes only the DST it started - never one the user plays)
+    print("launched", EXE, "pid", p.pid, flush=True)
 
 
 class Grabber:
