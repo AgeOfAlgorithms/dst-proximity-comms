@@ -9,8 +9,10 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
 ## Decisions (the user, 2026-10-13)
 
 - Name **Proximity Comms**; this repo (github.com/AgeOfAlgorithms/dst-proximity-comms). Author in modinfo and the
-  Koetama profile: **AgeOfAlgorithms** (was "AgeOfAlgorithms(+Opus5.5)" until the user saw it in DST's mod list,
-  2026-10-13: "that looks so weird"; Koetama's window shows each game mod's author).
+  Koetama profile: **McPuppetFace**, the Steam account the mods are uploaded with (the user, 2026-11-06; was
+  "AgeOfAlgorithms", the GitHub name, and before that "AgeOfAlgorithms(+Opus5.5)" until the user saw it in DST's mod
+  list, 2026-10-13: "that looks so weird"; Koetama's window shows each game mod's author). GitHub links stay
+  AgeOfAlgorithms.
 - **DST's own whisper stays** (our Whisper is dropped): the modes are Whisper (DST's), Speak, Yell (ours), Global
   (DST's Say). One mode for typing and talking.
 - **Bubbles: DST's native look**, plus garbled letters at range, scrolling long lines, docking to the screen edge.

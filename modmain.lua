@@ -237,6 +237,35 @@ AddClassPostConstruct("widgets/redux/chatline", function(self)
     end
 end)
 
+-- the chat on screen (the user, 2026-11-06): the game's lines at the bottom only when the setting shows them (DST shows
+-- them again each time the chat closes: their Show waits for the setting), and the history at its size - scaled from
+-- its bottom left, so it stays where it was (DST: a root at (-90, 765), its rows from about -390 left and -240 down)
+local CHAT_X, CHAT_Y, CHAT_LEFT, CHAT_BOTTOM = -90, 765, -390, -240
+local function chatScaled(root)
+    if not root then return end
+    local k = Settings.chatSize or 1
+    root:SetScale(k)
+    root:SetPosition(CHAT_X + CHAT_LEFT * (1 - k), CHAT_Y + CHAT_BOTTOM * (1 - k), 0)
+end
+CL.applyChat = function()
+    local c = G.ThePlayer and G.ThePlayer.HUD and G.ThePlayer.HUD.controls
+    if not c then return end
+    chatScaled(c.chat_queue_root)
+    local q = c.networkchatqueue
+    if q and q.pc_show then
+        if Settings.chatLines and not (G.ThePlayer.HUD:IsChatInputScreenOpen()) then q.pc_show(q) else q:Hide() end
+    end
+end
+AddClassPostConstruct("widgets/controls", function(self)
+    local q = self.networkchatqueue
+    if not q then return end
+    q.pc_show = q.Show
+    q.Show = function(w, ...) if Settings.chatLines then return w.pc_show(w, ...) end end
+    if not Settings.chatLines then q:Hide() end
+    chatScaled(self.chat_queue_root)
+end)
+AddClassPostConstruct("screens/chatinputscreen", function(self) chatScaled(self.chat_queue_root) end)
+
 -- the chat line
 AddClassPostConstruct("screens/chatinputscreen", require("proxcomms/chatinput")(CL, openSettings))
 

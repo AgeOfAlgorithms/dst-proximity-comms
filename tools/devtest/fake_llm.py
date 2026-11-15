@@ -21,6 +21,10 @@ class Fake(http.server.BaseHTTPRequestHandler):
         msgs = body.get('messages', [])
         last = msgs[-1] if msgs else {}
         print(json.dumps({'last': last, 'tools': [t.get('function', {}).get('name') for t in body.get('tools', [])]}), flush=True)
+        # (its replies in the speaker's own noise, from its persona: the slime blubs, the salamander chirps, a pig oinks)
+        persona = ' '.join(str(x.get('content', '')) for x in msgs if x.get('role') == 'system').lower()
+        noise = next((n for k, n in (('slime', 'Blub'), ('salamander', 'Chirp'), ('axolotl', 'Chirp'), ('pig', 'Oink'))
+                      if k in persona), 'Hm')
         q = re.search(r'every name once: ([a-z0-9_=. ]+)\]', str(last.get('content', '')))
         if q:
             content = str(last.get('content', ''))
@@ -34,26 +38,26 @@ class Fake(http.server.BaseHTTPRequestHandler):
             vals = {n: (0.05 if ignore else (0.95 if mine else 0.2)) if n == 'topic' else 0.1 for n in names}
             out = {'content': ' '.join('%s=%s' % (n, vals[n]) for n in names)}
         elif last.get('role') == 'tool':
-            out = {'content': 'Oink! Pigman follows.'}
+            out = {'content': noise + '! Right behind you.'}
         else:
             text = str(last.get('content', ''))
             m = re.search(r'([^\n:]+): [^\n]*follow', text, re.I)
             d = re.search(r'([^\n:]+): [^\n]*danc', text, re.I)
             k = re.search(r'([^\n:]+): [^\n]*attack the (\w+)', text, re.I)
             if k:
-                out = {'content': 'Grr! Blub!',
+                out = {'content': 'Grr! ' + noise + '!',
                        'tool_calls': [{'id': 'call_attack', 'type': 'function',
                                        'function': {'name': 'attack', 'arguments': json.dumps({'target': k.group(2)})}}]}
             elif d:
-                out = {'content': 'Blub! Watch me dance!',
+                out = {'content': noise + '! Watch me dance!',
                        'tool_calls': [{'id': 'call_dance', 'type': 'function',
                                        'function': {'name': 'emote', 'arguments': json.dumps({'feeling': 'dance'})}}]}
             elif m:
-                out = {'content': 'Oink oink! Lead the way, ' + m.group(1).strip() + '.',
+                out = {'content': noise + ' ' + noise.lower() + '! Lead the way, ' + m.group(1).strip() + '.',
                        'tool_calls': [{'id': 'call_follow', 'type': 'function',
                                        'function': {'name': 'follow', 'arguments': json.dumps({'player': m.group(1).strip()})}}]}
             else:
-                out = {'content': 'Oink?'}
+                out = {'content': noise + '?'}
         if body.get('stream'):
             # (a streaming agent - Proximity Comms' default: Koetama asks for server-sent events; the words, then each
             #  tool call whole, then the end and the usage)

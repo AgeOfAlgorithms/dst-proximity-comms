@@ -1270,7 +1270,7 @@ do
     setfenv(chunk, env)
     local ok, err = pcall(chunk)
     check(ok, "modmain runs in a mod environment: " .. tostring(err))
-    eq(#registered, 9 + 8 + 9 + 2 + 5 + 1 + 1, "modmain registers its RPCs, world hooks, UI hooks, the talker hook and its menu entry")
+    eq(#registered, 9 + 8 + 11 + 2 + 5 + 1 + 1, "modmain registers its RPCs, world hooks, UI hooks, the talker hook and its menu entry")
     local menu = userCommands.proxcomms
     check(menu and menu.servermenu == true and menu.localfn and not menu.serverfn and menu.slash == false, "Proximity Comms in the Miscellaneous / Server Actions window: client-side, no slash command")
     check(env.Assets and #env.Assets == 5 and env.Assets[1].path == "images/pc_wheel.xml" and env.Assets[3].path == "images/pc_bubble.xml"
@@ -1362,7 +1362,7 @@ do
     setfenv(ichunk, info)
     ichunk()
     check(info.all_clients_require_mod == true and info.client_only_mod == false and info.api_version == 10 and info.dst_compatible, "modinfo: every player needs it, API 10")
-    eq(info.author, "AgeOfAlgorithms", "modinfo: the author")
+    eq(info.author, "McPuppetFace", "modinfo: the author")
     check(info.icon_atlas == "modicon.xml" and info.icon == "modicon.tex", "modinfo: the icon")
     local xml = io.open(ROOT .. "modicon.xml"):read("*a")
     check(xml:find('filename="modicon.tex"', 1, true) and xml:find('name="modicon.tex"', 1, true), "the icon's atlas names its texture")
@@ -1747,6 +1747,16 @@ do
     local ok3 = pcall(Screen, CL, K, 3)
     check(ok3, "the Translate page with a pair downloading")
     TheInput.ControllerAttached = function() return controller end
+end
+
+-- (a model's [bracketed] asides are not said - the user, 2026-11-06)
+do
+    local A_ = require "proxcomms/agents"
+    eq(A_.noAsides("[Gilbert is a friend, not me] Blub! Gilbert won't hurt me."), "Blub! Gilbert won't hurt me.",
+        "agents: a bracketed aside is not said")
+    eq(A_.noAsides("Hrrm, yes [thinking] friend [still"), "Hrrm, yes friend", "agents: live words: an open bracket cut")
+    eq(A_.noAsides("No brackets here."), "No brackets here.", "agents: words without brackets as they are")
+    eq(A_.noAsides("[only an aside]"), "", "agents: only an aside - nothing to say")
 end
 
 print(string.format("%d passed, %d failed", passed, failed))

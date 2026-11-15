@@ -62,7 +62,9 @@ A.HEARS = {near = true, named = true, engaged = true, all = true, none = true}
 A.MODES = {whisper = "w", w = "w", speak = "s", s = "s", yell = "y", shout = "y", y = "y", global = "g", g = "g"}
 A.PREFIX = "agent:"             -- an agent's speaker id in lines (uid "agent:<kid>")
 A.HEAR_AGENTS_MAX = 50          -- hearagents at most
-A.PAUSE_MIN, A.PAUSE_PER_CHAR, A.PAUSE_MAX = 1, 0.04, 4   -- s before other agents hear an agent's line (reading it)
+-- (s before other agents hear an agent's line: time for the players to read it - about 12 characters a second; was
+-- 1 + 0.04 a character, at most 4 s: the user, 2026-11-06, "the creatures speak too fast and is difficult to follow")
+A.PAUSE_MIN, A.PAUSE_PER_CHAR, A.PAUSE_MAX = 2.5, 0.085, 10
 A.LATER_MAX = 32                -- agents' lines waiting to be heard by other agents, at most
 
 -- the game's side, set by modmain / tests
@@ -780,13 +782,21 @@ function A.busy()
     return b.on and (#b.lines > 0 or #b.results > 0 or #b.decisions > 0) or false
 end
 
+-- a model's words without its [bracketed] asides: brackets are how the game's events reach it ("[Spider hits you!]") and
+-- a model copies them (the user, 2026-11-06, seen in game: "[Gilbert is a friend, not me] Blub! ..."); a bracket still
+-- open at the end of live words is cut too. A mod's own lines (ProxComms.say) are said as they are.
+function A.noAsides(text)
+    text = text:gsub("%b[]", ""):gsub("%[[^%]]*$", "")
+    return (text:gsub("%s%s+", " "):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+([,.!?;:])", "%1"))
+end
+
 -- an agent_reply: the lines it answers; its words said (by its server); each call to the mod; an error
 function A.onReply(o)
     local b = B()
     local kid = o.agent
     if type(kid) ~= "string" then return end
     if o.final == false then                        -- (a streaming agent's words so far: live words, as a player's)
-        local text = type(o.text) == "string" and o.text or ""
+        local text = type(o.text) == "string" and A.noAsides(o.text) or ""
         if text ~= "" then
             b.utt[kid] = b.utt[kid] or 1
             b.liveOn[kid] = true
@@ -794,7 +804,7 @@ function A.onReply(o)
         end
         return
     end
-    local final = type(o.text) == "string" and o.text or ""
+    local final = type(o.text) == "string" and A.noAsides(o.text) or ""
     local err = type(o.error) == "string" and o.error or ""
     if b.liveOn[kid] and (final == "" or err ~= "") then A.down("live", {kid = kid, utt = b.utt[kid] or 1, text = ""}) end
     b.liveOn[kid] = nil

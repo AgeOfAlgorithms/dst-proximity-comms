@@ -2,7 +2,7 @@
 local C = {}
 
 C.NAMESPACE = "proxcomms"
-C.VERSION = "0.3.0"
+C.VERSION = "0.3.2"
 C.KOETAMA_URL = "https://github.com/AgeOfAlgorithms/koetama"
 C.KOETAMA_PORT = 47170            -- the profile's (koetama/dont-starve-together-proximity-comms.json)
 C.KOETAMA_MIN = "0.5.5"           -- older: feeds over 1 KB wait 1 s in DST's HTTP client (no "100 Continue")

@@ -1,0 +1,2 @@
+[h2]0.3.1[/h2]
+The author name now shows as McPuppetFace, the Steam account the mod is published from. Nothing else changed.

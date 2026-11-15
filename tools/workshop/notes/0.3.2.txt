@@ -1,0 +1,7 @@
+[h2]0.3.2[/h2]
+[list]
+[*][b]No more chat lines at the bottom of the screen[/b] by default - speech bubbles show what is said, and Enter opens the chat with the whole conversation. Want them back? /pc settings, Chat: "Chat lines on screen".
+[*][b]Smaller chat history[/b] (80 %), with a new setting to pick its size: /pc settings, Chat: "Chat history text size".
+[*][b]AI characters talk to each other more slowly[/b], so you can read along.
+[*]AI characters no longer say [bracketed] notes out loud.
+[/list]

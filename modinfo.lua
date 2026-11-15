@@ -2,8 +2,8 @@ local zh = locale == "zh" or locale == "zhr" or locale == "zht"
 local ru = locale == "ru"
 
 name = "Proximity Comms (Text and Voice Chat)"
-author = "AgeOfAlgorithms"
-version = "0.3.0"
+author = "McPuppetFace"
+version = "0.3.2"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true

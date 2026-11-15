@@ -11,6 +11,10 @@ local Settings = {
     bubbleOpacity = 0.6,     -- 0..1: the Clear style's box (0: none)
     enterChat = true,        -- Enter opens the chat line, and DST's Y / U don't (false: DST's keys, Y and U)
     textSize = 1,            -- 0.7 .. 1.6
+    -- (the chat on screen - the user, 2026-11-06: "annoying to see conversation in both the bubbles and the lines that
+    -- appear at the bottom ... pressing enter lets me see the whole convo"; "the convo history font is too big")
+    chatLines = false,       -- the game's chat lines at the bottom of the screen (the open chat shows them all)
+    chatSize = 0.8,          -- 0.6 .. 1: the chat history's size (the open chat's, and the lines when shown)
     mic = "auto",            -- auto (controller: always, else push to talk) / ptt / always / off
     talkKey = "V",           -- push to talk: a key's name (DST's KEY_<name>), bound on the Voice page
     voiceVolume = 1,         -- 0..1: other players' voices
@@ -23,7 +27,7 @@ local Settings = {
     loaded = false,
 }
 
-local FIELDS = {"mode", "bubbles", "bubbleStyle", "bubbleOpacity", "enterChat", "textSize", "mic", "talkKey", "voiceVolume", "live", "lang", "vol", "muted", "names", "pointed"}
+local FIELDS = {"mode", "bubbles", "bubbleStyle", "bubbleOpacity", "enterChat", "textSize", "chatLines", "chatSize", "mic", "talkKey", "voiceVolume", "live", "lang", "vol", "muted", "names", "pointed"}
 
 function Settings.apply(t)
     if type(t) ~= "table" then return end
@@ -33,6 +37,8 @@ function Settings.apply(t)
     if type(t.bubbleOpacity) == "number" then Settings.bubbleOpacity = math.max(0, math.min(1, t.bubbleOpacity)) end
     if type(t.enterChat) == "boolean" then Settings.enterChat = t.enterChat end
     if type(t.textSize) == "number" then Settings.textSize = math.max(0.7, math.min(1.6, t.textSize)) end
+    if type(t.chatLines) == "boolean" then Settings.chatLines = t.chatLines end
+    if type(t.chatSize) == "number" then Settings.chatSize = math.max(0.6, math.min(1, t.chatSize)) end
     if t.mic == "auto" or t.mic == "ptt" or t.mic == "always" or t.mic == "off" then Settings.mic = t.mic end
     if type(t.talkKey) == "string" and #t.talkKey <= 16 and t.talkKey:match("^[%w_]+$") then Settings.talkKey = t.talkKey end
     if type(t.voiceVolume) == "number" then Settings.voiceVolume = math.max(0, math.min(1, t.voiceVolume)) end

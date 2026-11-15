@@ -54,7 +54,11 @@ heard them (`[S]`, `[Y]`, and `(far)` when garbled). Every player's history is d
   wheel's **Miscellaneous** window (also the pause menu's Server Actions).
   Lines sent from a controller start with **∷** (four dots: a pad's face buttons), as in the Teardown mod.
 - **Settings:** `/pc settings`, the "Proximity Comms" button at the end of the chat line, or the wheel. Three pages:
-  Chat (mode, bubbles, their style, background and text size, distances), Voice (Koetama), Translate (Koetama).
+  Chat (mode, bubbles, their style, background and text size, the chat lines on screen and the history's size,
+  distances), Voice (Koetama), Translate (Koetama).
+- **The chat on screen:** the game's chat lines at the bottom of the screen are hidden by default (the bubbles show
+  what is said; Enter opens the chat with the whole history) - "Chat lines on screen" shows them; "Chat history text
+  size" (60-100 %, 80 % by default) sizes the history.
 - **Players** (settings page): each other player's voice volume, 0-150 %, only for you, with Reset.
 - **Commands:**
   - `/s`, `/y`, `/w` and `/g` choose the mode, or say one line in it: `/y over here!`

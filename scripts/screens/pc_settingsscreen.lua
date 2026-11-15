@@ -204,10 +204,19 @@ function PCSettingsScreen:ShowPage(i)
         for v = 70, 160, 10 do sizes[#sizes + 1] = {v .. "%", v / 100} end
         add(self:Spinner(L("ROW_TEXT"), sizes, math.floor(Settings.textSize * 10 + 0.5) / 10,
             function(v) Settings.textSize = v Settings.save() end))
+        add(self:Spinner(L("ROW_CHATLINES"), {{L("SHOW"), true}, {L("HIDE"), false}}, Settings.chatLines,
+            function(v) Settings.chatLines = v Settings.save() CL.applyChat() end))
+        local chatSizes = {}
+        for v = 60, 100, 10 do chatSizes[#chatSizes + 1] = {v .. "%", v / 100} end
+        add(self:Spinner(L("ROW_CHATSIZE"), chatSizes, math.floor(Settings.chatSize * 10 + 0.5) / 10,
+            function(v) Settings.chatSize = v Settings.save() CL.applyChat() end))
         local r = CL.ranges
-        add(self:Line(L("ROW_RANGES") .. ": " .. L("RANGES", r.whisperTiles, C.outerTiles(r, "w"), r.speakTiles,
-            C.outerTiles(r, "s"), r.yellTiles, C.outerTiles(r, "y"))), false, ROW_H * 1.25)
         local me = CL.client(CL.me())
+        -- (the distances in words - an admin has their spinners just below instead: the page's room)
+        if not (me and me.admin) then
+            add(self:Line(L("ROW_RANGES") .. ": " .. L("RANGES", r.whisperTiles, C.outerTiles(r, "w"), r.speakTiles,
+                C.outerTiles(r, "s"), r.yellTiles, C.outerTiles(r, "y"))), false, ROW_H * 1.25)
+        end
         if me and me.admin then
             local tiles = {}
             for v = C.TILES_MIN, C.TILES_MAX do tiles[#tiles + 1] = {tostring(v), v} end
