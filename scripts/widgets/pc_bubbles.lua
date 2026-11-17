@@ -5,6 +5,8 @@
 --   - long lines: three lines show, the rest scrolls up at reading pace (the bubble stays until the end);
 --   - a speaker off screen: their bubble docks on the screen edge on their side, with their name;
 --   - two bubbles that would overlap: the higher one is moved above the other;
+--   - the game's own HUD (inventory, crafting tabs, clock, status, map button, open chests - and mods' widgets in the
+--     same places) measured from its widgets, and a bubble that would go behind it moved out of the way;
 --   - Yell bigger, Whisper smaller and paler, ALL CAPS shaking; live words while someone talks (Koetama), "♪" while
 --     their voice is heard; a translation under the line, in pink.
 -- Everything it shows comes from proxcomms/client.lua (CL.bubbles, CL.live) and proxcomms/koetama.lua (K.talking).
@@ -202,6 +204,127 @@ function PCBubbles:Collect(now)
     return items
 end
 
+-- ---- the HUD's places (the user, 2026-11-16: bubbles of speakers off screen were drawn behind the game's own UI and
+-- could not be read). Measured from the HUD's widgets, not fixed boxes: the HUD size setting, the screen's shape, an
+-- open crafting menu or chest and mods that add or move badges (Combined Status) all count. Every image and text shown
+-- under each of the HUD's anchored roots, one box per element (its parts together), a few times a second.
+local HUD_EVERY = 0.25       -- s between measurements
+local HUD_PAD = 8            -- px kept clear around the HUD
+local HUD_MAX_SHARE = 0.45   -- a box over this share of the screen is not avoided (a backdrop, not a button)
+local HUD_ROOTS = {"topleft_root", "topright_root", "top_root", "bottom_root", "bottomright_root", "left_root",
+    "right_root", "containerroot", "containerroot_side"}
+
+-- the box of one widget's shown images and texts, in screen pixels (y up), grown to take each one in
+local function grow(w, prop, box, depth)
+    if depth > 14 or not w.shown then return end
+    local inst = w.inst
+    local lw, lh
+    if inst and inst.ImageWidget then
+        lw, lh = inst.ImageWidget:GetSize()
+    elseif inst and inst.TextWidget and (inst.TextWidget:GetString() or "") ~= "" then
+        lw, lh = inst.TextWidget:GetRegionSize()
+    end
+    if lw and lh and lw > 0 and lh > 0 then
+        local s = w:GetScale()
+        local p = w:GetWorldPosition()
+        local hw, hh = lw * math.abs(s.x) * prop * 0.5, lh * math.abs(s.y) * prop * 0.5
+        box[1], box[2] = math.min(box[1], p.x - hw), math.min(box[2], p.y - hh)
+        box[3], box[4] = math.max(box[3], p.x + hw), math.max(box[4], p.y + hh)
+    elseif inst and inst.AnimState and inst.AnimState.GetVisualBB then
+        -- (an animation - the clock, the status badges, the skill tree's eye: its drawing's own box, round its place)
+        local x1, y1, x2, y2 = inst.AnimState:GetVisualBB()
+        if x1 and x2 and y1 and y2 and x2 > x1 and y2 > y1 then
+            local s = w:GetScale()
+            local p = w:GetWorldPosition()
+            local kx, ky = math.abs(s.x) * prop, math.abs(s.y) * prop
+            box[1], box[2] = math.min(box[1], p.x + x1 * kx), math.min(box[2], p.y + y1 * ky)
+            box[3], box[4] = math.max(box[3], p.x + x2 * kx), math.max(box[4], p.y + y2 * ky)
+        end
+    end
+    for _, c in pairs(w.children or {}) do grow(c, prop, box, depth + 1) end
+end
+
+function PCBubbles:HudRects(now, sw, sh, prop)
+    if self.hudAt and now - self.hudAt < HUD_EVERY then return self.hudRects end
+    self.hudAt = now
+    local rects = {}
+    local hud = self.parent
+    local controls = hud and hud.controls
+    if controls and controls.shown then
+        for _, name in ipairs(HUD_ROOTS) do
+            local root = controls[name]
+            if root and root.IsVisible and root:IsVisible() then
+                for _, el in pairs(root.children or {}) do
+                    local box = {math.huge, math.huge, -math.huge, -math.huge}
+                    local ok = pcall(grow, el, prop, box, 0)
+                    -- (on screen, and not most of it)
+                    local x0, y0 = math.max(0, box[1]), math.max(0, box[2])
+                    local x1, y1 = math.min(sw, box[3]), math.min(sh, box[4])
+                    if ok and x1 > x0 and y1 > y0 and (x1 - x0) * (y1 - y0) < HUD_MAX_SHARE * sw * sh then
+                        rects[#rects + 1] = {x0 - HUD_PAD, y0 - HUD_PAD, x1 + HUD_PAD, y1 + HUD_PAD, name = name}
+                    end
+                end
+            end
+        end
+    end
+    self.hudRects = rects
+    return rects
+end
+
+local function overlaps(r, x, y, w, h)
+    return x + w * 0.5 > r[1] and x - w * 0.5 < r[3] and y + h * 0.5 > r[2] and y - h * 0.5 < r[4]
+end
+
+-- the nearest place for a bubble (centre x, y; w x h px) that overlaps none of the boxes (the HUD's, and the bubbles
+-- already placed), its centre within minx..maxx, miny..maxy. The places looked at: its own, and every box's edges
+-- across and along (one box at a time could push it into the next: between the eye and the crafting tabs it went
+-- back and forth). None free: it stays (better over an edge than gone)
+local function freeSpot(boxes, x, y, w, h, minx, maxx, miny, maxy)
+    local function clampX(v) return math.max(minx, math.min(maxx, v)) end
+    local function clampY(v) return math.max(miny, math.min(maxy, v)) end
+    local function free(cx, cy)
+        for _, r in ipairs(boxes) do if overlaps(r, cx, cy, w, h) then return false end end
+        return true
+    end
+    x, y = clampX(x), clampY(y)
+    if free(x, y) then return x, y end
+    local xs, ys = {x}, {y}
+    for _, r in ipairs(boxes) do
+        xs[#xs + 1], xs[#xs + 2] = clampX(r[1] - w * 0.5), clampX(r[3] + w * 0.5)
+        ys[#ys + 1], ys[#ys + 2] = clampY(r[2] - h * 0.5), clampY(r[4] + h * 0.5)
+    end
+    local best, bx, by
+    for _, cx in ipairs(xs) do
+        for _, cy in ipairs(ys) do
+            local d = (cx - x) ^ 2 + (cy - y) ^ 2
+            if (not best or d < best) and free(cx, cy) then best, bx, by = d, cx, cy end
+        end
+    end
+    if best then return bx, by end
+    return x, y
+end
+
+-- (dev: CL.showHud - the HUD boxes drawn, see-through red, to check them against the game's own UI)
+function PCBubbles:DrawHud(rects, on)
+    self.hudBoxes = self.hudBoxes or {}
+    for i = 1, math.max(#rects, #self.hudBoxes) do
+        local r, img = rects[i], self.hudBoxes[i]
+        if on and r then
+            if not img then
+                img = self:AddChild(Image("images/global.xml", "square.tex"))
+                img:SetClickable(false)
+                img:SetTint(1, 0.1, 0.1, 0.35)
+                self.hudBoxes[i] = img
+            end
+            img:SetPosition((r[1] + r[3]) * 0.5, (r[2] + r[4]) * 0.5, 0)
+            img:SetSize(r[3] - r[1], r[4] - r[2])
+            img:Show()
+        elseif img then
+            img:Hide()
+        end
+    end
+end
+
 function PCBubbles:OnUpdate(dt)
     local CL = self.CL
     local ok, err = pcall(CL.tick, dt)
@@ -211,6 +334,8 @@ function PCBubbles:OnUpdate(dt)
     local sw, sh = TheSim:GetScreenSize()
     local hud = TheFrontEnd:GetHUDScale()
     local k = propScale() * hud
+    local hudRects = self:HudRects(now, sw, sh, propScale())
+    self:DrawHud(hudRects, CL.showHud == true)
     local opacity = Settings.bubbleOpacity or 0.6
     local box = style().box and opacity > 0
     local padX, padY, tailH = 0, 0, 0
@@ -266,12 +391,15 @@ function PCBubbles:OnUpdate(dt)
                 x = math.max(minx, math.min(maxx, x))
                 y = math.max(miny, math.min(maxy, y))
                 if it.prev then y = y + ph * 0.25 end
-                -- (above any bubble it would overlap)
+                -- (clear of the game's HUD and of the bubbles placed before it: the nearest free place; a docked
+                --  one's name, above or below its box, counted in)
+                local hh = ph + (docked and it.name and it.size * k * 1.2 or 0)
+                local boxes = {}
+                for _, r in ipairs(hudRects) do boxes[#boxes + 1] = r end
                 for _, p in ipairs(placed) do
-                    if math.abs(p.x - x) < (p.w + pw) * 0.5 and math.abs(p.y - y) < (p.h + ph) * 0.5 then
-                        y = p.y + (p.h + ph) * 0.5 + 4
-                    end
+                    boxes[#boxes + 1] = {p.x - p.w * 0.5 - 2, p.y - p.h * 0.5 - 2, p.x + p.w * 0.5 + 2, p.y + p.h * 0.5 + 2}
                 end
+                x, y = freeSpot(boxes, x, y, pw, hh, minx, maxx, miny, maxy)
                 -- the tail: on the side of the box facing the speaker's head (off screen too), along it toward them -
                 -- worked out every frame, so it follows them (and the camera)
                 if box then
@@ -279,7 +407,7 @@ function PCBubbles:OnUpdate(dt)
                     it.tailSide, it.tailAt = tailSide(boxW, boxH, (it.ax - x) / k, (it.ay - cyPx) / k)
                 end
                 if it.caps then x, y = x + math.random(-2, 2), y + math.random(-2, 2) end
-                placed[#placed + 1] = {x = x, y = y, w = pw, h = ph}
+                placed[#placed + 1] = {x = x, y = y, w = pw, h = hh}
                 it.px, it.py, it.docked, it.h, it.trH, it.boxW, it.boxH = x, y, docked, h, trH, boxW, boxH
             end
         else

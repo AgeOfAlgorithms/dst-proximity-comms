@@ -85,6 +85,19 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Bubbles kept out from behind the HUD (the user, 2026-11-16: "the speech bubbles are often drawn behind the game's
+  own UI when players speak off the screen, which makes them impossible to read"; "can you draw boundaries around
+  these UI elements"):** the bubbles layer is at the back of the HUD (`MoveToBack`), and a docked bubble kept only 24
+  px from the edge, where the HUD is. `PCBubbles:HudRects` measures the HUD 4 times a second from its widgets, not
+  fixed boxes: under each of controls' anchored roots (topleft, topright, top, bottom, bottomright, left, right, the
+  container roots), one box per element from its shown images (`ImageWidget:GetSize`), texts (`GetRegionSize`) and
+  animations (`AnimState:GetVisualBB` - the clock, the status badges, the skill tree's eye), times `GetScale()` and
+  the proportional scale, round `GetWorldPosition()`; boxes over 45 % of the screen skipped. So the HUD size, an open
+  crafting menu or chest and mods' badges (Combined Status) count. Each bubble goes to the nearest place clear of
+  every HUD box and of the bubbles placed before it (`freeSpot`: candidates from every box's edges at once - moving
+  out of one box at a time sent a bubble back and forth between the eye and the crafting tabs). `CL.showHud = true`
+  draws the boxes (dev); devtest `SCENE=hud`: eight speakers off every side, shots with and without the boxes and
+  with the crafting menu open. Verified in game at 2560 x 1377, HUD scale 1.06.
 - **Agent API 5 (2026-11-16, for the AI Villagers: Koetama 8eb51d6 by the koetama-d4 session, to be 0.5.16):** a
   final result ends the turn with no follow-up request - `onCall` returning `text, true`, or
   `ProxComms.result(id, text, {final = true})`; the brain sends `"final": true` in `agent_results` only to a Koetama
