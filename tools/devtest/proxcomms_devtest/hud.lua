@@ -75,4 +75,31 @@ later(11, function()
 end)
 later(12.5, function() CL.showHud = true boxes() end)
 later(13, function() out("SHOT hud_crafting") end)
-later(15, function() CL.showHud = false out("DONE") end)
+-- (the user, 2026-11-16: two bubbles docked on an edge, one speaker moving - they flickered, switching places. Wolfgang
+--  walks down the right edge past Woodie; both bubbles' places logged ten times a second: they must glide, and
+--  change places once at most)
+later(14.5, function()
+    CL.showHud = false
+    local cm = G.ThePlayer.HUD.controls and G.ThePlayer.HUD.controls.craftingmenu
+    if cm and cm.Close then G.pcall(cm.Close, cm) end
+    CL.bubbles = {}
+    line("tr", "Woodie, staying right here by the trees")
+    line("r", "Wolfgang walking down past Woodie now")
+end)
+local function bubbleY(key)
+    local pb = G.ThePlayer and G.ThePlayer.HUD and G.ThePlayer.HUD.pc_bubbles
+    local w = pb and pb.pool[key]
+    return w and w.place and G.math.floor(w.place[2]) or -1
+end
+for i = 0, 40 do
+    later(15 + i * 0.1, function()
+        local d = cast.r
+        if d and d.ent and d.ent.Transform then
+            local x, z = D.ahead(40 - 70 * i / 40, 45)
+            d.ent.Transform:SetPosition(x, 0, z)
+            d.x, d.z = x, z
+        end
+        out("walk", i, "wolfgang", bubbleY("pchud_r:cur"), "woodie", bubbleY("pchud_tr:cur"))
+    end)
+end
+later(19.5, function() out("DONE") end)

@@ -23,6 +23,13 @@ local HOLD, PER_LINE = 1.5, 1.8
 local SIZE = 28           -- (FollowText draws chat at 35: a fifth smaller - the user, 2026-10-13: "the fonts are a bit big")
 local MARGIN = 24
 local STICK = 30          -- px a head moves before its bubble's place in the stack is looked at again (no flicker)
+-- (the user, 2026-11-16: two bubbles docked on the screen's edge, their speaker moving, "keep flickering and rapidly
+--  switching places ... their movement should be smoother around each other". A bubble keeps last frame's place
+--  beside its speaker while it is clear and not much worse than the best one now (HYST), and is drawn gliding to its
+--  place (GLIDE): never a jump, only the offset from where its speaker puts it eases - it still follows a head at once)
+local HYST = 40           -- px a new place must be nearer its speaker than the old one to be moved to
+local GLIDE = 12          -- 1/s: how fast a bubble glides to its place (about a tenth of a second)
+local GLIDE_MAX = 1100    -- px/s at most: a long way (two bubbles changing places) a slide, not a jump
 local TR_COLOUR = {1, 0.6, 0.78, 1}
 local TR_ORIGINAL = 0.6   -- a translated line's original, against its translation
 -- the box (images/pc_bubble.xml, tools/make_bubble.py): white, tinted to BOX_RGB at Settings.bubbleOpacity
@@ -173,7 +180,7 @@ function PCBubbles:Collect(now)
                 items[#items + 1] = {key = uid .. ":" .. slot, uid = uid, lines = shown, colour = {col[1], col[2], col[3], 1},
                     nameColour = b.colour, font = font,
                     size = size, trSize = trSize, tr = trLines, caps = b.caps, dock = not (b.native and b.mode == "g"), x = b.x, z = b.z,
-                    name = b.name, prev = slot == "prev", scrolled = #b.lines > LINES}
+                    name = b.name, prev = slot == "prev", scrolled = #b.lines > LINES, line = b.t}
             end
         end
     end
@@ -301,6 +308,27 @@ local function freeSpot(boxes, x, y, w, h, minx, maxx, miny, maxy)
         end
     end
     if best then return bx, by end
+    -- (a crowded screen: none of those free - the screen looked over in steps for the place overlapping least, the
+    --  nearest of those: crowded bubbles spread out over each other's edges rather than pile up in one place)
+    local function overlapArea(cx, cy)
+        local a = 0
+        for _, r in ipairs(boxes) do
+            local ox = math.min(cx + w * 0.5, r[3]) - math.max(cx - w * 0.5, r[1])
+            local oy = math.min(cy + h * 0.5, r[4]) - math.max(cy - h * 0.5, r[2])
+            if ox > 0 and oy > 0 then a = a + ox * oy end
+        end
+        return a
+    end
+    local bestA
+    local stepPx = 24
+    for cy = miny, maxy, stepPx do
+        for cx = minx, maxx, stepPx do
+            local a = overlapArea(cx, cy)
+            local d = (cx - x) ^ 2 + (cy - y) ^ 2
+            if not bestA or a < bestA or (a == bestA and d < best) then bestA, best, bx, by = a, d, cx, cy end
+        end
+    end
+    if bestA then return bx, by end
     return x, y
 end
 
@@ -361,6 +389,9 @@ function PCBubbles:OnUpdate(dt)
         self.sortY[it.key], it.sy, seen[it.key] = was, was, true
     end
     for key in pairs(self.sortY) do if not seen[key] then self.sortY[key] = nil end end
+    self.lay = self.lay or {}                 -- key -> its place beside its speaker: kept (ox, oy) and drawn (dx, dy)
+    self.lineAt = self.lineAt or {}           -- a line (its start) -> where it was drawn last frame
+    local layNow, lineNow = {}, {}
     table.sort(items, function(a, b)
         if a.sy ~= b.sy then return a.sy < b.sy end
         return a.key < b.key
@@ -399,7 +430,49 @@ function PCBubbles:OnUpdate(dt)
                 for _, p in ipairs(placed) do
                     boxes[#boxes + 1] = {p.x - p.w * 0.5 - 2, p.y - p.h * 0.5 - 2, p.x + p.w * 0.5 + 2, p.y + p.h * 0.5 + 2}
                 end
-                x, y = freeSpot(boxes, x, y, pw, hh, minx, maxx, miny, maxy)
+                -- (first as before: above any bubble it would overlap - always above, so two heads bobbing at one
+                --  height keep their order, no flicker; below where above would leave the screen)
+                local sx, sy = x, y
+                for _, p in ipairs(placed) do
+                    if math.abs(p.x - sx) < (p.w + pw) * 0.5 and math.abs(p.y - sy) < (p.h + hh) * 0.5 then
+                        local up = p.y + (p.h + hh) * 0.5 + 4
+                        if up <= maxy then sy = up else sy = math.max(miny, p.y - (p.h + hh) * 0.5 - 4) end
+                    end
+                end
+                local function clearAt(cx, cy)
+                    for _, r in ipairs(boxes) do if overlaps(r, cx, cy, pw, hh) then return false end end
+                    return true
+                end
+                local nx, ny = x, y                  -- (where its speaker puts it)
+                local tx, ty
+                if clearAt(sx, sy) then tx, ty = sx, sy else tx, ty = freeSpot(boxes, x, y, pw, hh, minx, maxx, miny, maxy) end
+                -- (last frame's place beside its speaker, while clear and not much farther from it than the new one)
+                local lay = self.lay[it.key]
+                if lay and lay.line == it.line then
+                    local ox = math.max(minx, math.min(maxx, nx + lay.ox))
+                    local oy = math.max(miny, math.min(maxy, ny + lay.oy))
+                    local function far(cx, cy) return math.sqrt((cx - nx) ^ 2 + (cy - ny) ^ 2) end
+                    if clearAt(ox, oy) and far(ox, oy) <= far(tx, ty) + HYST then tx, ty = ox, oy end
+                else
+                    -- (a new bubble here: where this line was last drawn (it moved from "now" to "before"), else
+                    --  straight at its place)
+                    local was = it.line and self.lineAt[it.line]
+                    lay = {line = it.line, dx = (was and was[1] or tx) - nx, dy = (was and was[2] or ty) - ny}
+                end
+                lay.ox, lay.oy = tx - nx, ty - ny
+                local step = dt or 0.03
+                local a = 1 - math.exp(-step * GLIDE)
+                local mx, my = (lay.ox - lay.dx) * a, (lay.oy - lay.dy) * a
+                local len, most = math.sqrt(mx * mx + my * my), GLIDE_MAX * step
+                if len > most then mx, my = mx * most / len, my * most / len end
+                lay.dx, lay.dy = lay.dx + mx, lay.dy + my
+                self.lay[it.key], layNow[it.key] = lay, true
+                placed[#placed + 1] = {x = tx, y = ty, w = pw, h = hh}
+                it.tx, it.ty = tx, ty
+                -- (drawn where it glides to, on the screen)
+                x = math.max(minx, math.min(maxx, nx + lay.dx))
+                y = math.max(miny, math.min(maxy, ny + lay.dy))
+                if it.line then lineNow[it.line] = {x, y} end
                 -- the tail: on the side of the box facing the speaker's head (off screen too), along it toward them -
                 -- worked out every frame, so it follows them (and the camera)
                 if box then
@@ -407,8 +480,8 @@ function PCBubbles:OnUpdate(dt)
                     it.tailSide, it.tailAt = tailSide(boxW, boxH, (it.ax - x) / k, (it.ay - cyPx) / k)
                 end
                 if it.caps then x, y = x + math.random(-2, 2), y + math.random(-2, 2) end
-                placed[#placed + 1] = {x = x, y = y, w = pw, h = hh}
                 it.px, it.py, it.docked, it.h, it.trH, it.boxW, it.boxH = x, y, docked, h, trH, boxW, boxH
+                it.pw, it.ph = pw, hh
             end
         else
             it.skip = true
@@ -485,6 +558,8 @@ function PCBubbles:OnUpdate(dt)
                 w.name:Hide()
             end
             w:SetPosition(it.px, it.py, 0)
+            w.place = {it.px, it.py, it.pw, it.ph}   -- (its box on the screen, as laid out: the tests check them)
+            w.target = {it.tx or it.px, it.ty or it.py, it.pw, it.ph}
             w:Show()
         end
     end
@@ -494,6 +569,8 @@ function PCBubbles:OnUpdate(dt)
             self.pool[key] = nil
         end
     end
+    for key in pairs(self.lay) do if not layNow[key] then self.lay[key] = nil end end
+    self.lineAt = lineNow
 end
 
 return PCBubbles

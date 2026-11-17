@@ -1638,6 +1638,111 @@ do
     view:OnUpdate(0.03)
     check(higher() == "cid" or h0 == "cid", "one really lower than the other: re-stacked by height")
     ana.z, cid.z = 0, 0
+    -- (the user, 2026-11-16: two bubbles docked on the screen's edge, one speaker walking past the other - they
+    --  "keep flickering and rapidly switching places": they must glide, and change places once at most)
+    do
+        -- (heard - this player stands near them - but off the screen's right edge: the screen is fixed here)
+        local ax, az, cx, cz, mx = ana.x, ana.z, cid.x, cid.z, me.x
+        me.x, ana.x, cid.x, ana.z, cid.z = 90, 110, 110, -8, 0
+        CL.onLine("KU_ana", "Ana", "over here by the river", "y", 120, 110, -8, false)
+        CL.onLine("KU_cid", "Cid", "and me, by the rocks", "y", 121, 110, 0, false)
+        for _ = 1, 20 do view:OnUpdate(0.03) end
+        local function ys() return view.pool["KU_ana:cur"].y, view.pool["KU_cid:cur"].y end
+        -- (a bubble's offset from where its speaker puts it: what glides; the speaker's own steps it follows at once)
+        local function offs() return view.lay["KU_ana:cur"].dy, view.lay["KU_cid:cur"].dy end
+        local pa, pc = ys()
+        local oa, oc = offs()
+        local jump, glide, swaps, order, targets = 0, 0, 0, pa > pc, 0
+        local lastT = view.lay["KU_ana:cur"].oy
+        for i = 1, 80 do
+            ana.z = -8 + 16 * i / 80 + 0.15 * ((i % 2 == 0) and 1 or -1)    -- (walking past Cid, bobbing)
+            view:OnUpdate(0.03)
+            local ya, yc = ys()
+            local na, nc = offs()
+            jump = math.max(jump, math.abs(ya - pa), math.abs(yc - pc))
+            glide = math.max(glide, math.abs(na - oa), math.abs(nc - oc))
+            if (ya > yc) ~= order then swaps, order = swaps + 1, ya > yc end
+            local tNow = view.lay["KU_ana:cur"].oy
+            if math.abs(tNow - lastT) > 60 then targets = targets + 1 end
+            pa, pc, oa, oc, lastT = ya, yc, na, nc, tNow
+        end
+        check(view.pool["KU_ana:cur"].x > 1500 and view.pool["KU_cid:cur"].x > 1500, "(both docked on the right edge)")
+        check(glide <= 1100 * 0.03 + 0.5, "docked bubbles glide to their places: at most 33 px a frame (" .. math.floor(glide) .. ")")
+        check(jump < 60, "and never jump: under 60 px a frame with the speaker's own steps (" .. math.floor(jump) .. ")")
+        check(targets <= 1 and swaps <= 1,
+            "one walking past the other: they change places once at most (" .. swaps .. ", " .. targets .. " new places)")
+        ana.x, ana.z, cid.x, cid.z, me.x = ax, az, cx, cz, mx
+        for _ = 1, 20 do view:OnUpdate(0.03) end
+    end
+    -- (a crowded screen: speakers off every side and corner, two lines each, round the game's HUD - no bubble over
+    --  another or behind the HUD; seen in game 2026-11-16: Wickerbottom's over Wendy's at the top left)
+    do
+        local ranges = CL.ranges
+        CL.ranges = C.ranges(30, 64)
+        local hud = {{50, 940, 180, 1080}, {0, 150, 90, 880}, {1760, 780, 1920, 1080}, {340, 0, 1580, 95},
+            {1790, 0, 1920, 115}}
+        local spots = {{110, 0}, {-110, 0}, {0, -60}, {0, 60}, {-110, -60}, {110, -60}, {-110, 60}, {110, 60}}
+        local lid = 900
+        for round = 1, 2 do
+            for i, s in ipairs(spots) do
+                lid = lid + 1
+                CL.onLine("KU_crowd" .. i, "Speaker " .. i, "line " .. round .. ", read me", "y", lid, s[1], s[2], false)
+            end
+            for _ = 1, 60 do                                  -- (time to glide to their places)
+                view.hudAt, view.hudRects = 1e12, hud
+                view:OnUpdate(0.03)
+            end
+        end
+        local boxes = {}
+        for key, w in pairs(view.pool) do
+            if key:find("^KU_crowd") and w.shown ~= false and w.place then boxes[#boxes + 1] = {key = key, p = w.place} end
+        end
+        local function over(a, b2)
+            return math.abs(a[1] - b2[1]) < (a[3] + b2[3]) * 0.5 - 1 and math.abs(a[2] - b2[2]) < (a[4] + b2[4]) * 0.5 - 1
+        end
+        local bad, behind = {}, {}
+        for i = 1, #boxes do
+            for j = i + 1, #boxes do
+                if over(boxes[i].p, boxes[j].p) then bad[#bad + 1] = boxes[i].key .. "/" .. boxes[j].key end
+            end
+            for _, r in ipairs(hud) do
+                local hb = {(r[1] + r[3]) * 0.5, (r[2] + r[4]) * 0.5, r[3] - r[1], r[4] - r[2]}
+                if over(boxes[i].p, hb) then behind[#behind + 1] = boxes[i].key end
+            end
+        end
+        eq(#boxes, 16, "a crowded screen: sixteen bubbles shown")
+        check(#bad == 0, "no bubble over another (" .. table.concat(bad, ", ") .. ")")
+        check(#behind == 0, "none behind the HUD (" .. table.concat(behind, ", ") .. ")")
+        local tbad = 0
+        for i = 1, #boxes do for j = i + 1, #boxes do
+            local a, c = view.pool[boxes[i].key].target, view.pool[boxes[j].key].target
+            if over(a, c) then tbad = tbad + 1 end
+        end end
+        eq(tbad, 0, "(their places as chosen: none over another)")
+        -- (more than the screen holds - long lines: they overlap, but spread out, not piled in one place)
+        for i, s in ipairs(spots) do
+            lid = lid + 1
+            CL.onLine("KU_crowd" .. i, "Speaker " .. i, "a much longer line this time, two lines of words in a bubble - can you still read it?",
+                "y", lid, s[1], s[2], false)
+        end
+        for _ = 1, 40 do
+            view.hudAt, view.hudRects = 1e12, hud
+            view:OnUpdate(0.03)
+        end
+        local same = 0
+        local seen = {}
+        for key, w in pairs(view.pool) do
+            if key:find("^KU_crowd") and w.target then
+                local k2 = math.floor(w.target[1] / 8) .. ":" .. math.floor(w.target[2] / 8)
+                if seen[k2] then same = same + 1 end
+                seen[k2] = true
+            end
+        end
+        eq(same, 0, "too many for the screen: spread out, none piled on another's place")
+        CL.ranges = ranges
+        for i = 1, #spots do CL.bubbles["KU_crowd" .. i] = nil end
+        view:OnUpdate(0.03)
+    end
     local low, high = a2, c2
     if a2.y > c2.y then low, high = c2, a2 end
     check(low.box.shown and high.box.shown and low.box.tint[4] == 0.6, "Clear: each bubble on a see-through box (60 %)")
