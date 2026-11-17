@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 4, "agents: API 4")
+    eq(AG.API, 5, "agents: API 5")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -924,6 +924,80 @@ do
     AG.onDown(ana, "caps", J.encode(caps32))
     AG.define("cat", nil)
     AG.onUp("remove", J.encode({kid = "cat:1"}))
+    -- (API 5) a final result ends the turn (no follow-up request), max_rounds, the tokens a reply used - each only
+    -- for a Koetama whose hello names agent_final (0.5.16); ProxComms.finals() says so on every shard
+    local henInfo = {}
+    AG.define("hen", {persona = "x", max_rounds = 99, functions = {{name = "gather", description = "gather"}},
+        onCall = function(call) henInfo.call = call return "ok: gathering 6 grass", true end,
+        onReply = function(text, info) henInfo.reply = info end})
+    local hd = upsFor("def", "hen:1")[1]
+    check(hd and hd.t.max_rounds == 16, "max_rounds: at most 16")
+    AG.define("hen2", {persona = "x"})
+    check(upsFor("def", "hen2:1")[1] and upsFor("def", "hen2:1")[1].t.max_rounds == nil, "no max_rounds: none (no limit)")
+    AG.define("hen2", nil)
+    AG.onUp("def", J.encode(hd.t))
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
+    local _, henDef = feedFor("hen:1")
+    check(henDef and henDef.max_rounds == nil and #AG.brain.defs["hen:1"].def.functions == 1,
+        "a Koetama without agent_final: no max_rounds in the feed")
+    local capsNo = downs("caps")[1]
+    check(capsNo and capsNo.final == false, "caps: final false")
+    AG.onDown(ana, "caps", J.encode(capsNo))
+    eq(AG.finals(), false, "ProxComms.finals(): false")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true, agent_final = true}, {type = "hello", agent_functions = 32})
+    _, henDef = feedFor("hen:1")
+    eq(henDef and henDef.max_rounds, 16, "agent_final: max_rounds in the feed")
+    local capsYes = downs("caps")[1]
+    check(capsYes and capsYes.final == true and capsYes.scores == true and capsYes.functions == 32, "caps: final true")
+    AG.onDown(ana, "caps", J.encode(capsYes))
+    eq(AG.finals(), true, "ProxComms.finals(): true")
+    -- the reply: its words and its call carry the tokens it used; onCall returning text, true: a final result
+    sentToServer = {}
+    AG.onReply({type = "agent_reply", agent = "hen:1", final = true, ids = {}, text = "On it!", error = "",
+        calls = {{call = "c_hen1", name = "gather", args = {what = "grass"}}},
+        tokens_in = 5200, tokens_out = 12, tokens_cached = 4400})
+    local hs, hc = downs("say")[1], downs("call")[1]
+    check(hs and hs.tokens and hs.tokens.input == 5200 and hs.tokens.output == 12 and hs.tokens.cached == 4400,
+        "the reply's tokens with its words")
+    check(hc and hc.tokens and hc.tokens.input == 5200, "and with its call")
+    sentToClient = {}
+    AG.handle("say", hs)
+    check(henInfo.reply and henInfo.reply.tokens and henInfo.reply.tokens.cached == 4400, "onReply: info.tokens")
+    AG.handle("call", hc)
+    check(henInfo.call and henInfo.call.tokens and henInfo.call.tokens.output == 12, "onCall: call.tokens")
+    local hr = ups("result")[#ups("result")]
+    check(hr and hr.t.call == "c_hen1" and hr.t.final == true, "onCall returning text, true: a final result")
+    AG.onUp("result", J.encode(hr.t))
+    local fdR = {}
+    AG.feed(fdR)
+    local rr
+    for _, x in ipairs(fdR.agent_results or {}) do if x.call == "c_hen1" then rr = x end end
+    check(rr and rr.final == true and rr.result == "ok: gathering 6 grass", "the feed: the result, final")
+    -- ProxComms.result(callId, text, {final = true}) later; a plain one stays plain
+    AG.calls.c_hen2 = {id = "hen", t = 0}
+    AG.calls.c_hen3 = {id = "hen", t = 0}
+    check(AG.result("c_hen2", "ok: done", {final = true}) and AG.result("c_hen3", "ok: started"), "result(id, text, opts)")
+    local r2, r3
+    for _, u in ipairs(ups("result")) do
+        if u.t.call == "c_hen2" then r2 = u.t elseif u.t.call == "c_hen3" then r3 = u.t end
+    end
+    check(r2 and r2.final == true and r3 and r3.final == nil, "{final = true}: final; none: not")
+    AG.onUp("result", J.encode(r2))
+    -- a Koetama without agent_final never gets "final" (it would be a field it doesn't know)
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
+    local fdOld = {}
+    AG.feed(fdOld)
+    local oldFinal = false
+    for _, x in ipairs(fdOld.agent_results or {}) do if x.final ~= nil then oldFinal = true end end
+    check(not oldFinal, "an older Koetama: no final in agent_results")
+    -- (back as the scores tests had it)
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
+    AG.onDown(ana, "caps", J.encode(downs("caps")[#downs("caps")]))
+    AG.define("hen", nil)
+    AG.onUp("remove", J.encode({kid = "hen:1"}))
+    AG.brain.results = {}
     -- a note goes as context (no reason by itself to answer: the turn stays scored); the line, count 0
     AG.note("dog", "Bob petted you")
     sentToClient = {}

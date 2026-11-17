@@ -108,7 +108,7 @@ G.rawset(G, "ProxComms", {
     version = AG.API,
     agent = AG.define, event = AG.event, note = AG.note, say = AG.say, forget = AG.forget, result = AG.result,
     status = AG.status, scores = AG.scoring, decide = AG.decide, noted = AG.noted,
-    agentfunctions = AG.agentFunctions,
+    agentfunctions = AG.agentFunctions, finals = AG.finals,
 })
 
 -- "Proximity Comms" in DST's Miscellaneous window (the command wheel's User Commands) and the pause menu's Server

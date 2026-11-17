@@ -116,7 +116,7 @@ lines. Only that admin's Koetama gets what is said near an agent.
 
 ```lua
 -- server: a pig that follows whoever asks ("Pigman, follow me")
-local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 4)
+local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 5)
 ProxComms.agent("pigman", {
     persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 8 KB)
     name = "Pigman",                             -- (in bubbles and the chat)
@@ -157,6 +157,14 @@ ProxComms.agent("pigman", {
   `false` and nothing is said (nobody hears it, not even other agents), a string and that is said instead, `nil` and
   it is said as it is. For a model that says "NO WORDS." when told to keep quiet, or puts its own name before its line.
   An agent with `onSay` shows no live words (they would show what you may still hold back): its line appears whole.
+- **Calls that end the turn** (version 5; with Koetama 0.5.16 or later - `ProxComms.finals()` is true): after a call
+  is answered the model is asked again for what to say, a second request. For a call that only starts something long
+  ("gather 6 grass") that follow-up is wasted: return `"ok: gathering", true` from `onCall` (or
+  `ProxComms.result(call.id, "ok: ...", {final = true})` later) and the turn ends with the result - the model sees it
+  on its next turn. `max_rounds = N` (1-16) caps the requests in one turn, follow-ups included. Replies tell what they
+  cost: `info.tokens` in `onReply` / `onSay` and `call.tokens` in `onCall` are `{input, output, cached}` (tokens of the
+  whole prompt, written, and of the prompt read from the provider's cache). With an older Koetama all of this is
+  ignored and every call gets its follow-up, as before.
 - **Functions:** up to 32 an agent (version 3; was 16) with Koetama 0.5.15 or later. An older Koetama takes 16 and
   would leave out an agent with more, so only its first 16 are sent: put the ones that matter most first.
   `ProxComms.agentfunctions()` - how many it may have now (16 until the admin's Koetama says 32; the Teardown mod's

@@ -13,7 +13,9 @@
 --                               API 3 - with an older Koetama only the first 16 go, ProxComms.agentfunctions()), state (a
 --                               string or a function returning one: what it should know now), max_words, stream (false:
 --                               no live words), character (false: not a character - the persona is the whole prompt),
---                               onCall(call) (return "ok: ..." / "error: ..." now, or nil and ProxComms.result later),
+--                               onCall(call) (return "ok: ..." / "error: ..." now, or nil and ProxComms.result later;
+--                               API 5: return text, true - a final result: the turn ends, no follow-up request),
+--                               (API 5) max_rounds (1-16: the most requests in one turn, follow-ups included),
 --                               onReply(text, info), onError(code, why), (API 4) onSay(text, info) (a reply before it
 --                               is said - return false: nothing is said, a string: that is said instead, nil: as it is;
 --                               such an agent shows no live words: they would show what onSay may still hold back);
@@ -25,7 +27,11 @@
 --   ProxComms.event(id, text)   a line for it to hear from the game; .note(id, text): with its next line, once
 --                               (API 2: .note(id, nil) takes them back; .noted(id): how many still wait);
 --   ProxComms.say(id, text)     it says this without the model (the model hears of it with its next line);
---   ProxComms.forget(id)        its conversation starts over; .result(callId, text): a call's answer;
+--   ProxComms.forget(id)        its conversation starts over; .result(callId, text): a call's answer (API 5:
+--                               .result(callId, text, {final = true}) - it ends the turn, no follow-up request);
+--   ProxComms.finals()          (API 5) true: the brain's Koetama ends a turn on a final result and keeps to
+--                               max_rounds (Koetama 0.5.16); else both are ignored. Replies' info.tokens (and a call's
+--                               call.tokens): {input, output, cached} the request used, when Koetama says (0.5.16)
 --   ProxComms.status()          "ready" / "busy" / "budget" / "error" / "off"
 --   ProxComms.scores()          (API 2) true: the brain's Koetama scores turns (criteria do something);
 --   ProxComms.decide(id, turn, answer)  (API 2) a decision on a scored turn (info.turn), when onScores returned nil
@@ -55,8 +61,8 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 4                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
-                                -- 4: onSay)
+A.API = 5                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
+                                -- 4: onSay; 5: final results, max_rounds, the tokens a reply used)
 -- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
 -- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
 A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
@@ -111,6 +117,8 @@ A.calls = {}           -- call id -> {id (agent), t}
 A.eng = {}             -- id -> userid -> when it was named / answered
 A.scores = false       -- the brain's Koetama scores turns (its "caps", on every shard)
 A.functionsMax = A.FUNCTIONS_OLD   -- the functions an agent may have, as the brain's Koetama says (its "caps")
+A.finalOk = false      -- the brain's Koetama ends turns on final results, keeps to max_rounds (its "caps", API 5)
+A.ROUNDS_MAX = 16
 A.later = {}           -- agents' lines other agents will hear: {due, uid, name, text, mode, x, z, depth, by}
 
 function A.isLocal(uid)
@@ -127,6 +135,10 @@ end
 
 -- (API 3) the functions an agent may have: 16 until the brain's Koetama says more (0.5.15 and later: 32). An agent
 -- defined with more has only its first that many sent (put the ones that matter most first)
+function A.finals()
+    return A.owner ~= nil and A.finalOk == true
+end
+
 function A.agentFunctions()
     return A.functionsMax
 end
@@ -175,6 +187,7 @@ local function defOf(a)
     local d = {kid = a.kid, persona = a.persona, max_words = a.max_words, character = a.character, stream = a.stream}
     if a.functions and #a.functions > 0 then d.functions = a.functions end
     if a.criteria then d.criteria = a.criteria end
+    if a.max_rounds then d.max_rounds = a.max_rounds end
     return d
 end
 
@@ -218,6 +231,8 @@ function A.define(id, def)
     a.functions = functionsOf(def.functions)
     a.state = def.state
     a.max_words = math.max(1, math.min(1000, math.floor(tonumber(def.max_words) or 80)))
+    local mr = tonumber(def.max_rounds)                 -- (API 5: absent - no limit)
+    a.max_rounds = mr and math.max(1, math.min(A.ROUNDS_MAX, math.floor(mr))) or nil
     a.stream = def.stream ~= false
     a.character = def.character ~= false
     a.onCall, a.onReply, a.onError = def.onCall, def.onReply, def.onError
@@ -432,12 +447,21 @@ function A.forget(id)
 end
 
 -- (API) a call's answer ("ok: ..." / "error: ..."), back to the model
-function A.result(callId, text)
+-- (API 5: opts {final = true} (or true) - a final result: the turn ends with it, no follow-up request, when the brain's
+-- Koetama does that - ProxComms.finals(); an older one asks the model again as before)
+function A.result(callId, text, opts)
     local c = A.calls[callId]
     if not c or type(text) ~= "string" then return false end
     A.calls[callId] = nil
-    A.up("result", {call = callId, result = T.cutBytes(text, 1000)})
+    local final = opts == true or (type(opts) == "table" and opts.final == true)
+    A.up("result", {call = callId, result = T.cutBytes(text, 1000), final = final or nil})
     return true
+end
+
+-- (API 5) a reply's tokens as the mod gets them: {input, output, cached}, or nil (an older Koetama)
+local function tokensOf(t)
+    if type(t) ~= "table" or not tonumber(t.input) then return nil end
+    return {input = tonumber(t.input), output = tonumber(t.output) or 0, cached = tonumber(t.cached) or 0}
 end
 
 -- (API 2) the mod's decision on a scored turn (onScores' info.turn): answer it (true) or skip it
@@ -463,6 +487,7 @@ function A.handle(kind, t)
         A.scores = t.scores == true
         local n = math.floor(tonumber(t.functions) or A.FUNCTIONS_OLD)
         A.functionsMax = math.max(A.FUNCTIONS_OLD, math.min(A.FUNCTIONS_MAX, n))     -- (API 3)
+        A.finalOk = t.final == true                                                  -- (API 5)
         return
     end
     local id, shard = A.split(t.kid)
@@ -480,12 +505,12 @@ function A.handle(kind, t)
         -- (onSay(text, info), for the AI Villagers, 2026-11-16: the mod sees a reply before it is said - return false:
         --  nothing is said; a string: that is said instead. A model told to stay silent says "NO WORDS." aloud)
         if type(text) == "string" and text ~= "" and type(a.onSay) == "function" then
-            local ok, r = pcall(a.onSay, text, {from = from, lines = lines})
+            local ok, r = pcall(a.onSay, text, {from = from, lines = lines, tokens = tokensOf(t.tokens)})
             if ok and r == false then text = "" elseif ok and type(r) == "string" then text = r end
         end
         if type(text) == "string" and text ~= "" then
             local depth = math.max(1, math.min(1000, math.floor(tonumber(t.depth) or 1)))
-            A.deliver(a, text, {from = from, lines = lines, depth = depth})
+            A.deliver(a, text, {from = from, lines = lines, depth = depth, tokens = tokensOf(t.tokens)})
         end
     elseif kind == "skip" then                          -- (API 2: a scored turn the mod skipped - nothing said)
         a.skipn = (a.skipn or 0) + 1
@@ -515,11 +540,11 @@ function A.handle(kind, t)
         if type(t.call) ~= "string" or type(t.name) ~= "string" then return end
         A.calls[t.call] = {id = id, t = now()}
         local call = {id = t.call, agent = id, name = t.name, args = type(t.args) == "table" and t.args or {},
-            from = from, lines = lines}
+            from = from, lines = lines, tokens = tokensOf(t.tokens)}
         if TheWorld then TheWorld:PushEvent("proxcomms_agent_call", call) end
         if type(a.onCall) == "function" then
-            local ok, r = pcall(a.onCall, call)
-            if ok and type(r) == "string" then A.result(t.call, r)
+            local ok, r, fin = pcall(a.onCall, call)
+            if ok and type(r) == "string" then A.result(t.call, r, fin == true)
             elseif not ok then A.result(t.call, "error: " .. tostring(r):sub(1, 200)) end
         end
     elseif kind == "error" then
@@ -630,7 +655,8 @@ end
 -- (API 2) what this brain's Koetama does, to every shard
 local function sendCaps()
     local b = B()
-    A.down("caps", {scores = b.scores == true and b.llm == true, functions = b.maxFn or A.FUNCTIONS_OLD})
+    A.down("caps", {scores = b.scores == true and b.llm == true, functions = b.maxFn or A.FUNCTIONS_OLD,
+        final = b.final == true and b.llm == true})
 end
 
 -- (client RPC) this game is the brain now (or no longer)
@@ -659,6 +685,7 @@ function A.onUp(kind, s)
         if not d or d.sig ~= sig then
             local def = {id = t.kid, version = (d and d.def.version or 0) + 1, persona = t.persona,
                 character = t.character ~= false, stream = t.stream ~= false, max_words = t.max_words, functions = t.functions,
+                max_rounds = tonumber(t.max_rounds),
                 criteria = type(t.criteria) == "table" and #t.criteria > 0 and t.criteria or nil}
             b.defs[t.kid] = {sig = sig, def = def}
             b.sentAt = now()
@@ -683,7 +710,8 @@ function A.onUp(kind, s)
         if A.K then A.K.poke() end
     elseif kind == "result" then
         if type(t.call) == "string" then
-            b.results[#b.results + 1] = {call = t.call, result = tostring(t.result or ""), ids = b.callIds[t.call]}
+            b.results[#b.results + 1] = {call = t.call, result = tostring(t.result or ""), ids = b.callIds[t.call],
+                final = t.final == true}
             b.callIds[t.call] = nil
             if A.K then A.K.poke() end
         end
@@ -734,6 +762,7 @@ function A.onHello(features, hello)
     local n = math.floor(tonumber(type(hello) == "table" and hello.agent_functions) or A.FUNCTIONS_OLD)
     b.maxFn = math.max(1, math.min(A.FUNCTIONS_MAX, n))                -- (API 3: Koetama 0.5.15 says 32)
     b.cutSaid = {}
+    b.final = features and features.agent_final == true or false       -- (API 5: Koetama 0.5.16)
     b.scorePending, b.decisions = {}, {}         -- (a new Koetama numbers its turns afresh)
     b.llmAt = -1e9                               -- (said to the server at once)
     if b.on then sendCaps() end
@@ -780,10 +809,11 @@ function A.feed(f)
             local def = d.def
             local maxFn = b.maxFn or A.FUNCTIONS_OLD
             local cut = type(def.functions) == "table" and #def.functions > maxFn
-            if (def.criteria and not b.scores) or cut then
+            if (def.criteria and not b.scores) or cut or (def.max_rounds and not b.final) then
                 def = {}
                 for k, v in pairs(d.def) do def[k] = v end
                 if not b.scores then def.criteria = nil end    -- (criteria only for a Koetama that scores)
+                if not b.final then def.max_rounds = nil end   -- (API 5: max_rounds only for one that keeps to it)
             end
             if cut then              -- (API 3: more functions than this Koetama takes would leave the agent out)
                 local fns = J.array({})
@@ -808,7 +838,9 @@ function A.feed(f)
     end
     if #lines > 0 then f.to_agent = lines end
     local res = J.array({})
-    for _, r in ipairs(b.results) do if not r.received then res[#res + 1] = {call = r.call, result = r.result} end end
+    for _, r in ipairs(b.results) do                        -- (API 5: final only to a Koetama that ends turns on it)
+        if not r.received then res[#res + 1] = {call = r.call, result = r.result, final = (r.final and b.final) or nil} end
+    end
     if #res > 0 then f.agent_results = res end
     local dec = J.array({})                                -- (API 2: the mods' decisions on scored turns)
     for _, x in ipairs(b.decisions) do
@@ -903,12 +935,16 @@ function A.onReply(o)
         if ld and (not depth or ld < depth) then depth = ld end
     end
     depth = (depth or 0) + 1
-    if final ~= "" or #from > 0 then A.down("say", {kid = kid, text = final, from = from, lines = idList, depth = depth}) end
+    local tok = tonumber(o.tokens_in) and {input = tonumber(o.tokens_in), output = tonumber(o.tokens_out) or 0,
+        cached = tonumber(o.tokens_cached) or 0} or nil                -- (API 5: Koetama 0.5.16)
+    if final ~= "" or #from > 0 then
+        A.down("say", {kid = kid, text = final, from = from, lines = idList, depth = depth, tokens = tok})
+    end
     for _, call in ipairs(type(o.calls) == "table" and o.calls or {}) do
         if type(call) == "table" and type(call.name) == "string" and type(call.call) == "string" then
             b.callIds[call.call] = idList
             A.down("call", {kid = kid, call = call.call, name = call.name, args = type(call.args) == "table" and call.args or {},
-                from = from, lines = idList})
+                from = from, lines = idList, tokens = tok})
         end
     end
 end

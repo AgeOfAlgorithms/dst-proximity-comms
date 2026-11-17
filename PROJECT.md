@@ -85,6 +85,12 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Agent API 5 (2026-11-16, for the AI Villagers: Koetama 8eb51d6 by the koetama-d4 session, to be 0.5.16):** a
+  final result ends the turn with no follow-up request - `onCall` returning `text, true`, or
+  `ProxComms.result(id, text, {final = true})`; the brain sends `"final": true` in `agent_results` only to a Koetama
+  whose hello's features name `agent_final` (`b.final`). `max_rounds` (1-16) in a definition, sent only then too (else
+  stripped like criteria). A reply's `tokens_in/out/cached` go with its "say" and each "call" to the agent's shard:
+  `info.tokens` / `call.tokens` = `{input, output, cached}`. The caps carry `final`: `ProxComms.finals()`.
 - **Agents' bubbles follow them (the user, 2026-11-05: "the speech bubbles don't follow the speaker when the speaker
   moves"):** a player's bubble was placed every frame from the player entity (`CL.entity`), but an agent's only from
   where its line was said - `CL.entity` knew players and test figures, never agents. Now an agent's line and live words
