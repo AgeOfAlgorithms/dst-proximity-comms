@@ -14,7 +14,9 @@
 --                               string or a function returning one: what it should know now), max_words, stream (false:
 --                               no live words), character (false: not a character - the persona is the whole prompt),
 --                               onCall(call) (return "ok: ..." / "error: ..." now, or nil and ProxComms.result later),
---                               onReply(text, info), onError(code, why);
+--                               onReply(text, info), onError(code, why), (API 4) onSay(text, info) (a reply before it
+--                               is said - return false: nothing is said, a string: that is said instead, nil: as it is;
+--                               such an agent shows no live words: they would show what onSay may still hold back);
 --                               (API 2, the Teardown mod's API 19-20 - the user, 2026-11-05) criteria (a list of up to 8
 --                               {name, description}: each turn of players' lines scored 0-1 on each before it is
 --                               answered) with onScores(scores, info) (return true: answer, false: skip, nil: decide
@@ -53,7 +55,8 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 3                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions)
+A.API = 4                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
+                                -- 4: onSay)
 -- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
 -- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
 A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
@@ -218,6 +221,7 @@ function A.define(id, def)
     a.stream = def.stream ~= false
     a.character = def.character ~= false
     a.onCall, a.onReply, a.onError = def.onCall, def.onReply, def.onError
+    a.onSay = def.onSay
     a.onScores, a.onSkip = def.onScores, def.onSkip
     local crit, why = criteriaOf(def.criteria)
     a.criteria = crit
@@ -472,9 +476,16 @@ function A.handle(kind, t)
         for _, uid in ipairs(from) do
             if type(uid) == "string" then A.eng[id] = A.eng[id] or {} A.eng[id][uid] = tm end
         end
-        if type(t.text) == "string" and t.text ~= "" then
+        local text = t.text
+        -- (onSay(text, info), for the AI Villagers, 2026-11-16: the mod sees a reply before it is said - return false:
+        --  nothing is said; a string: that is said instead. A model told to stay silent says "NO WORDS." aloud)
+        if type(text) == "string" and text ~= "" and type(a.onSay) == "function" then
+            local ok, r = pcall(a.onSay, text, {from = from, lines = lines})
+            if ok and r == false then text = "" elseif ok and type(r) == "string" then text = r end
+        end
+        if type(text) == "string" and text ~= "" then
             local depth = math.max(1, math.min(1000, math.floor(tonumber(t.depth) or 1)))
-            A.deliver(a, t.text, {from = from, lines = lines, depth = depth})
+            A.deliver(a, text, {from = from, lines = lines, depth = depth})
         end
     elseif kind == "skip" then                          -- (API 2: a scored turn the mod skipped - nothing said)
         a.skipn = (a.skipn or 0) + 1
@@ -497,6 +508,7 @@ function A.handle(kind, t)
     elseif kind == "live" then
         local x, z = A.posOf(a)
         if a.mode == "g" or not x or type(t.text) ~= "string" then return end
+        if type(a.onSay) == "function" then return end  -- (API 4: its words are shown once onSay passed them)
         SendModRPCToClient(clientRPC("live"), A.S.near(x, z, A.S.reach(a.mode)), A.PREFIX .. a.kid, a.name,
             tonumber(t.utt) or 1, T.clean(T.tail(t.text, 200), 200), a.mode, x, z, A.prefabOf(a))
     elseif kind == "call" then

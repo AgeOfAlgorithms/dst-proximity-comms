@@ -116,7 +116,7 @@ lines. Only that admin's Koetama gets what is said near an agent.
 
 ```lua
 -- server: a pig that follows whoever asks ("Pigman, follow me")
-local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 3)
+local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 4)
 ProxComms.agent("pigman", {
     persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 8 KB)
     name = "Pigman",                             -- (in bubbles and the chat)
@@ -153,6 +153,10 @@ ProxComms.agent("pigman", {
   `proxcomms_said` (with `.agent`), `proxcomms_agent_call`, `proxcomms_agent_error`, `proxcomms_agent_skip`.
 - More: `max_words` (its longest reply, default 80), `character = false` (not a character in the world - a
   director, a narrator: the persona is the whole prompt).
+- **Vet its words** (version 4): `onSay = function(text, info) ... end` sees each reply before it is said - return
+  `false` and nothing is said (nobody hears it, not even other agents), a string and that is said instead, `nil` and
+  it is said as it is. For a model that says "NO WORDS." when told to keep quiet, or puts its own name before its line.
+  An agent with `onSay` shows no live words (they would show what you may still hold back): its line appears whole.
 - **Functions:** up to 32 an agent (version 3; was 16) with Koetama 0.5.15 or later. An older Koetama takes 16 and
   would leave out an agent with more, so only its first 16 are sent: put the ones that matter most first.
   `ProxComms.agentfunctions()` - how many it may have now (16 until the admin's Koetama says 32; the Teardown mod's

@@ -77,6 +77,14 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   `agent_functions` (`b.maxFn`) and sends an older Koetama only an agent's first 16 (a log line once per agent);
   the caps carry `functions` to every shard: `ProxComms.agentfunctions()` (16 until then; the Teardown mod's
   `proxchat.agentfunctions`, API 21, the same day). Nothing else changed in Koetama's agent protocol since 0.5.14.
+- **Agent API 4 (2026-11-16, for the AI Villagers - the dst-mods-65 session, at the user's request):** `onSay(text,
+  info)` in a definition sees each reply on the agent's shard before `A.deliver`: `false` - nothing said, no other
+  agent hears it, no `onReply`; a string - said instead; `nil` or an error - as it is. Why: deepseek-flash, told to keep
+  quiet, says "NO" / "(NO words)" / "NO WORDS." aloud (the other agents heard and scored it) and puts its own name
+  before its line. An agent with `onSay` gets no live words (`A.handle "live"` drops them): they would show what onSay
+  may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
+  devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
+  koetama-d4 session): a function result that ends the turn with no follow-up request.
 - **Agents' bubbles follow them (the user, 2026-11-05: "the speech bubbles don't follow the speaker when the speaker
   moves"):** a player's bubble was placed every frame from the player entity (`CL.entity`), but an agent's only from
   where its line was said - `CL.entity` knew players and test figures, never agents. Now an agent's line and live words

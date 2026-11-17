@@ -82,7 +82,8 @@ echo "return $TEST_PORT" > "$DST/mods/proxcomms_devtest/port.lua"
 LLM_ARGS=""
 if [ -n "$FAKE_LLM" ]; then
     LLM_PORT=47999
-    ( python tools/devtest/fake_llm.py $LLM_PORT > "$OUT/fake_llm.txt" 2>&1 & )
+    # (FAKE_LLM_PY=<file>: another mod's scripted model, e.g. the AI Villagers' tools/devtest/fake_llm.py)
+    ( python "${FAKE_LLM_PY:-tools/devtest/fake_llm.py}" $LLM_PORT > "$OUT/fake_llm.txt" 2>&1 & )
     export KOETAMA_LLM_KEY=sk-fake
     LLM_ARGS="--llm-model fake-model --llm-url http://127.0.0.1:$LLM_PORT"
 fi

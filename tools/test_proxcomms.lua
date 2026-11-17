@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 3, "agents: API 3")
+    eq(AG.API, 4, "agents: API 4")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -1033,6 +1033,37 @@ do
     sentToClient = {}
     AG.handle("say", ms)
     check(AG.eng.mira and AG.eng.mira["agent:gus:1"], "engaged with Gus")
+    -- (API 4) onSay: a reply before it is said - false: nothing (not heard by the others either), a string: that
+    -- instead, nil or an error: as it is; such an agent shows no live words
+    local vetted = {}
+    AG.define("vil", {persona = "You are Willow.", name = "Willow", entity = spot, hears = "near",
+        onSay = function(text, info)
+            vetted[#vetted + 1] = {text = text, from = info.from}
+            if text:upper():find("NO WORDS") then return false end
+            if text:find("^Willow: ") then return (text:gsub("^Willow: ", "")) end
+            if text == "boom" then error("a broken hook") end
+        end,
+        onReply = function(text) vetted.said = text end})
+    sentToClient = {}
+    local laterN = #AG.later
+    AG.handle("say", {kid = "vil:1", text = "NO WORDS.", from = {"KU_bob"}, lines = {}, depth = 1})
+    check(#vetted == 1 and vetted[1].text == "NO WORDS." and vetted[1].from[1] == "KU_bob", "onSay: sees the reply and who it answers")
+    check(lastTo("line") == nil and #AG.later == laterN and vetted.said == nil,
+        "onSay false: nothing said, nobody (no agent) hears it, no onReply")
+    AG.handle("say", {kid = "vil:1", text = "Willow: Hello, Bob.", from = {"KU_bob"}, lines = {}, depth = 1})
+    check(lastTo("line") and lastTo("line").args[3] == "Hello, Bob." and vetted.said == "Hello, Bob.", "onSay a string: said instead")
+    sentToClient = {}
+    AG.handle("say", {kid = "vil:1", text = "Nice day.", from = {}, lines = {}, depth = 1})
+    eq(lastTo("line") and lastTo("line").args[3], "Nice day.", "onSay nil: said as it is")
+    sentToClient = {}
+    AG.handle("say", {kid = "vil:1", text = "boom", from = {}, lines = {}, depth = 1})
+    eq(lastTo("line") and lastTo("line").args[3], "boom", "onSay errors: said as it is")
+    sentToClient = {}
+    AG.handle("live", {kid = "vil:1", utt = 1, text = "NO WO"})
+    eq(lastTo("live"), nil, "an agent with onSay: no live words")
+    AG.handle("live", {kid = "gus:1", utt = 1, text = "Lovely"})
+    check(lastTo("live") ~= nil, "(one without: its live words as before)")
+    AG.define("vil", nil)
     advance(5)
     AG.laterTick()
     local gl = upsFor("line", "gus:1")[1]
