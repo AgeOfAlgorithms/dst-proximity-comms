@@ -1,0 +1,7 @@
+[h2]0.3.4[/h2]
+[list]
+[*][b]Speech bubbles stay readable around the game's own UI[/b] - a bubble for someone off screen used to slip behind the inventory, the crafting tabs, the clock or the status badges. Now bubbles move out of the way of everything the HUD shows, at any HUD size, with the crafting menu or a chest open, and with mods that add badges.
+[*][b]No more flickering bubbles[/b] - two bubbles on the screen's edge used to jump back and forth while someone walked. They now glide smoothly around each other, and a crowded screen spreads them out instead of stacking them on top of each other.
+[*][b]For mod makers - check what an AI character says before it's said:[/b] onSay lets your mod drop or rewrite a reply.
+[*][b]For mod makers - calls that end the turn:[/b] with Koetama 0.5.16, a call that starts something long can end the character's turn without a second request, and replies tell you how many tokens they used. See the README.
+[/list]
