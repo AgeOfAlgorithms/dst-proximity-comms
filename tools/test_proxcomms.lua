@@ -992,6 +992,57 @@ do
     local oldFinal = false
     for _, x in ipairs(fdOld.agent_results or {}) do if x.final ~= nil then oldFinal = true end end
     check(not oldFinal, "an older Koetama: no final in agent_results")
+    -- (a feed is at most 64 KB: the user's AI Villagers, 2026-11-17 - four villagers of ~16.5 KB each made every feed
+    --  ~70 KB, refused whole, so only the one defined alone got through. Definitions go over several feeds instead,
+    --  at most A.DEF_BUDGET in one, each until a feed carrying it is answered)
+    do
+        AG.onHello({llm = true, agent_scores = true, agent_final = true}, {type = "hello", agent_functions = 32})
+        local big = {}
+        local fns = {}
+        for i = 1, 30 do
+            fns[i] = {name = "act" .. i, description = string.rep("does a thing in the world ", 9),
+                parameters = {type = "object", properties = {what = {type = "string", description = "what it acts on"}}}}
+        end
+        for i = 1, 4 do
+            big[i] = "vil" .. i
+            AG.define(big[i], {persona = string.rep("A villager who lives by the camp. ", 240), functions = fns})
+            AG.onUp("def", J.encode(upsFor("def", big[i] .. ":1")[#upsFor("def", big[i] .. ":1")].t))
+        end
+        local size1 = #J.encode(AG.brain.defs["vil1:1"].def)
+        check(size1 > 15000 and size1 < 20000, "(a villager's definition: ~16.5 KB - " .. size1 .. ")")
+        AG.onKnown({agents = {}})                         -- (Koetama knows none of them)
+        local known, feeds, worst = {}, 0, 0
+        for _ = 1, 6 do
+            local fd = {}
+            AG.feed(fd)
+            if not fd.agents then break end
+            feeds = feeds + 1
+            worst = math.max(worst, #J.encode(fd.agents))
+            AG.fed(true)                                  -- (answered)
+            for _, d in ipairs(fd.agents) do known[#known + 1] = {id = d.id, version = d.version} end
+            AG.onKnown({agents = known})
+        end
+        local got = {}
+        for _, k in ipairs(known) do got[k.id] = true end
+        check(got["vil1:1"] and got["vil2:1"] and got["vil3:1"] and got["vil4:1"], "all four definitions reach Koetama")
+        check(feeds >= 2 and worst <= AG.DEF_BUDGET + 20000, "over several feeds, none over the budget (" .. feeds .. " feeds, "
+            .. math.floor(worst / 1024) .. " KB of definitions at most)")
+        -- (a feed that is not answered: its definitions go again; before agents_known each goes until answered)
+        AG.brain.defs["vil1:1"].okAt = nil
+        AG.onKnown({agents = {}})
+        AG.brain.known = nil
+        AG.brain.sentAt = AG.brain.sentAt + 0.001
+        local fd1 = {}
+        AG.feed(fd1)
+        AG.fed(false)
+        local fd2 = {}
+        AG.feed(fd2)
+        local again = false
+        for _, d in ipairs(fd2.agents or {}) do if d.id == (fd1.agents or {})[1].id then again = true end end
+        check(fd1.agents and again, "a feed not answered: its definitions go again")
+        AG.fed(true)
+        for i = 1, 4 do AG.define(big[i], nil) AG.onUp("remove", J.encode({kid = big[i] .. ":1"})) end
+    end
     -- (back as the scores tests had it)
     AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
     AG.onDown(ana, "caps", J.encode(downs("caps")[#downs("caps")]))

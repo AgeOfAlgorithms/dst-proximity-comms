@@ -69,7 +69,12 @@ A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
 A.FUNCTIONS_OLD = 16            -- what a Koetama takes whose hello has no agent_functions (0.5.14 and older)
 A.LINE_LIFE = 60                -- s a line waits for its reply (the brain)
 A.LINES_MAX = 32
-A.SEND_FOR = 5                  -- s definitions go in the feed after a hello or a change, before agents_known
+A.SEND_FOR = 5                  -- (no longer used: definitions go until a feed carrying them is answered)
+-- (a feed is at most 64 KB - Koetama answers a bigger one 413 and takes none of it. The definitions Koetama lacks go
+-- over as many feeds as they need, at most DEF_BUDGET of them in one, the longest unsent first; the rest of the feed
+-- (lines with their states, results) has the room left. The user's AI Villagers, 2026-11-17: four of ~16.5 KB each in
+-- every feed made it ~70 KB - refused every time, so only the one villager defined alone ever got through)
+A.DEF_BUDGET = 36 * 1024
 A.ENGAGED = 30                  -- s a player it answered (or who named it) stays heard by an agent that hears "engaged"
 A.CAND_LIFE = 30                -- s a brain candidate is kept without being heard again
 A.CALL_LIFE = 30                -- s a call waits for the mod's answer
@@ -776,6 +781,16 @@ function A.onKnown(o)
     B().known = known
 end
 
+-- (K.post) the feed went: answered (ok) - its definitions are Koetama's now; or not - they go again
+function A.fed(ok)
+    local b = B()
+    if ok then
+        local t = now()
+        for _, d in ipairs(b.inFlight or {}) do d.okAt = t end
+    end
+    b.inFlight = {}
+end
+
 function A.onReceived(o)
     local b = B()
     local got, calls = {}, {}
@@ -801,11 +816,29 @@ function A.feed(f)
     if not (b.on and b.llm) then return end
     local t = now()
     local defs = J.array({})
+    -- (wanted: Koetama lacks it or has an older version - or, before its agents_known, not yet in an answered feed
+    --  since the hello or the last change; one just answered waits 3 s for agents_known to catch up)
+    local cands = {}
     for _, d in pairs(b.defs) do
         local want
-        if b.known then local kv = b.known[d.def.id] want = kv == nil or kv < d.def.version
-        else want = t - b.sentAt < A.SEND_FOR end
-        if want and #defs < 32 then
+        if b.known then
+            local kv = b.known[d.def.id]
+            want = (kv == nil or kv < d.def.version) and not (d.okAt and d.okAt >= b.sentAt and t - d.okAt < 3)
+        else
+            want = (d.okAt or -1e9) < b.sentAt
+        end
+        if want then cands[#cands + 1] = d end
+    end
+    table.sort(cands, function(x, y)
+        local tx, ty = x.tryAt or -1e9, y.tryAt or -1e9
+        if tx ~= ty then return tx < ty end
+        return x.def.id < y.def.id
+    end)
+    local bytes = 0
+    b.inFlight = {}
+    for _, d in ipairs(cands) do
+        if #defs >= 32 then break end
+        do
             local def = d.def
             local maxFn = b.maxFn or A.FUNCTIONS_OLD
             local cut = type(def.functions) == "table" and #def.functions > maxFn
@@ -826,7 +859,14 @@ function A.feed(f)
                         .. "sent (Koetama 0.5.15 and later take 32)", def.id, #d.def.functions, maxFn, maxFn))
                 end
             end
+            -- (its size as sent - kept while the definition and what this Koetama takes stay the same)
+            local key = tostring(b.scores) .. tostring(b.final) .. tostring(b.maxFn)
+            if d.sizeKey ~= key then d.sizeKey, d.size = key, #J.encode(def) end
+            if #defs > 0 and bytes + d.size > A.DEF_BUDGET then break end
             defs[#defs + 1] = def
+            bytes = bytes + d.size
+            d.tryAt = t
+            b.inFlight[#b.inFlight + 1] = d
         end
     end
     if #defs > 0 then f.agents = defs end

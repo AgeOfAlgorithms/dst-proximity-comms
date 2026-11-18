@@ -180,18 +180,53 @@ end
 
 -- ---- requests
 
+-- (Koetama takes a feed of at most 64 KB: a bigger one is refused whole, 413. The agents' definitions are sent over
+-- several feeds (agents.lua A.feed); should a feed still be too big, the definitions wait, then the lines' states)
+K.MAX_BODY = 64 * 1024 - 256
+
 function K.post(wait, done)
-    local ok, body = pcall(J.encode, K.feed(wait))
-    if not ok then done(false) return end
-    K.lastSend = now()
+    local f = K.feed(wait)
+    local ok, body = pcall(J.encode, f)
+    if ok and #body > K.MAX_BODY then
+        local was = #body
+        if f.agents then
+            f.agents = nil
+            if K.A then K.A.fed(false) end
+            ok, body = pcall(J.encode, f)
+        end
+        if ok and #body > K.MAX_BODY and f.to_agent then
+            for _, l in ipairs(f.to_agent) do l.state = nil end
+            ok, body = pcall(J.encode, f)
+        end
+        if ok and #body > K.MAX_BODY then f.to_agent = nil ok, body = pcall(J.encode, f) end
+        if not K.said.big then
+            K.said.big = true
+            print(string.format("[Proximity Comms] a feed of %d KB is over Koetama's 64 KB: sent as %d KB", math.floor(was / 1024), math.floor(#body / 1024)))
+        end
+    end
+    if not ok then
+        if K.A then K.A.fed(false) end
+        done(false)
+        return
+    end
+    K.lastSend, K.lastSize = now(), #body
     local ok2 = pcall(K.query, K.URL, function(result, isSuccessful, code)
-        done(K.onAnswer(result, isSuccessful, code))
+        local fine = K.onAnswer(result, isSuccessful, code)
+        if K.A then K.A.fed(fine) end
+        done(fine)
     end, "POST", body)
-    if not ok2 then done(false) end
+    if not ok2 then
+        if K.A then K.A.fed(false) end
+        done(false)
+    end
 end
 
 function K.onAnswer(result, isSuccessful, code)
     if not isSuccessful or code ~= 200 then
+        if code == 413 and not K.said.tooBig then         -- (should not happen now: K.post keeps feeds under 64 KB)
+            K.said.tooBig = true
+            print(string.format("[Proximity Comms] Koetama refused a feed of %d KB (413: over 64 KB)", math.floor((K.lastSize or 0) / 1024)))
+        end
         if code == 400 and not K.said.refused then
             K.said.refused = true
             K.CL.system(L("K_REFUSED", T.head(tostring(result or ""), 120)))
