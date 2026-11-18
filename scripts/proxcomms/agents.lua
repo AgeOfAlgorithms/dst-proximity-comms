@@ -8,7 +8,9 @@
 -- A MOD CALLS (server; GLOBAL.ProxComms - README "Agents"):
 --   ProxComms.agent(id, def)    define or change an agent (nil: remove). def: persona (required: who it is, up to 8 KB),
 --                               name, entity (an inst: it hears and speaks where it is) or x / z, hears (near - the
---                               default - / named / engaged / all / none), mode (whisper / speak / yell / global),
+--                               default - / named / engaged / all / none; API 6: in the buffer past the mode's range a
+--                               line comes garbled, ⬚ for the letters not made out), mode (whisper / speak / yell /
+--                               global),
 --                               functions (a list of up to 32 {name, description, parameters}, or that list as JSON:
 --                               API 3 - with an older Koetama only the first 16 go, ProxComms.agentfunctions()), state (a
 --                               string or a function returning one: what it should know now), max_words, stream (false:
@@ -61,8 +63,8 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 5                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
-                                -- 4: onSay; 5: final results, max_rounds, the tokens a reply used)
+A.API = 6                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
+                                -- 4: onSay; 5: final results, max_rounds, the tokens a reply used; 6: garbled lines)
 -- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
 -- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
 A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
@@ -315,6 +317,14 @@ function A.lineUp(a, text, from, depth)
     A.up("line", {kid = a.kid, text = text, from = from, state = stateOf(a), depth = depth or 0})
 end
 
+-- (a line's garble seed: the same line garbles the same for every agent at one distance, as for players)
+local function seedOf(uid, text)
+    local h = #text
+    for i = 1, math.min(#text, 64) do h = (h * 31 + text:byte(i)) % 1000003 end
+    for i = 1, #uid do h = (h * 31 + uid:byte(i)) % 1000003 end
+    return h
+end
+
 -- (server) a player (uid, name) said text in mode at x, z: the agents that hear it get it. depth (API 2): an agent's
 -- line (uid "agent:<kid>", by its id) - its count of agent lines in a row; only the others whose hearagents reaches it
 function A.hear(uid, name, text, mode, x, z, depth, by)
@@ -327,14 +337,33 @@ function A.hear(uid, name, text, mode, x, z, depth, by)
             local named = (a.hears == "named" or a.hears == "engaged") and A.named(text, a.name)
             local eng = A.eng[id] and A.eng[id][uid]
             local engaged = a.hears == "engaged" and eng ~= nil and t - eng <= A.ENGAGED
-            if (a.hears == "near" or named or engaged) and mode ~= "g" and x and z then
+            local heard = text
+            if (a.hears == "near" or a.hears == "named" or a.hears == "engaged") and mode ~= "g" and x and z then
+                -- (API 6: as a player there reads it - whole within the mode's range, garbled (⬚, T.GARBLE) in the
+                --  buffer out to its reach, nothing past it. The user, 2026-11-17, for the AI Villagers: "squares in
+                --  speeches mean they are not close enough to hear the full speech" - they never saw one. Its name is
+                --  looked for in what it made out: a name lost in the garble is not heard)
+                hear = false
                 local ax, az = A.posOf(a)
                 local r = A.S.ranges[mode] or A.S.ranges.s
-                hear = ax ~= nil and (ax - x) ^ 2 + (az - z) ^ 2 <= (r[1] + 1) ^ 2
+                if ax ~= nil then
+                    local d = math.sqrt((ax - x) ^ 2 + (az - z) ^ 2)
+                    if d <= r[1] + 1 then
+                        hear = true
+                    elseif d <= r[2] then
+                        local f = math.max(0, math.min(1, (r[2] - d) / math.max(0.5, r[2] - r[1]))) * C.GARBLE_MAX
+                        heard = T.garble(text, f, seedOf(uid, text))
+                        hear = true
+                    end
+                end
+                if hear and a.hears ~= "near" then
+                    named = A.named(heard, a.name)
+                    hear = named or engaged
+                end
             end
             if hear then
                 if named then A.eng[id] = A.eng[id] or {} A.eng[id][uid] = t end
-                A.lineUp(a, text, {id = uid, name = name}, depth)
+                A.lineUp(a, heard, {id = uid, name = name}, depth)
             end
         end
     end

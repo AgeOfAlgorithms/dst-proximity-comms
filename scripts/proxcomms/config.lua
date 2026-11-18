@@ -18,6 +18,7 @@ C.TILES_MIN, C.TILES_MAX = 2, 64
 C.WHISPER_BUFFER = 1.4            -- the garbled zone beyond the words' range, as a share of it (Teardown's +40 %)
 C.SPEAK_BUFFER = 1.4
 C.YELL_BUFFER = 1.375             -- (+37.5 %)
+C.GARBLE_MAX = 0.75               -- the share of letters made out at the inner edge of the buffer (players and agents)
 C.SLACK = 0.5                     -- the server sends a line this share past its outer range too (walking in while it is up)
 C.VOICE_NEAR = 0.5                -- a voice is at full loudness within this share of its words' range
 C.MAX_LEN = 150                   -- DST's MAX_CHAT_INPUT_LENGTH

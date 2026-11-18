@@ -116,7 +116,7 @@ lines. Only that admin's Koetama gets what is said near an agent.
 
 ```lua
 -- server: a pig that follows whoever asks ("Pigman, follow me")
-local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 5)
+local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 6)
 ProxComms.agent("pigman", {
     persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 8 KB)
     name = "Pigman",                             -- (in bubbles and the chat)
@@ -139,7 +139,9 @@ ProxComms.agent("pigman", {
 
 - `hears`: `near` - lines said within the line's own range of it (Whisper / Speak / Yell); `named` - near, with its
   name in the line; `engaged` - named, then anything near from a player it answered or who named it in the last
-  30 s; `all` - every line, Global too; `none` - only your events.
+  30 s; `all` - every line, Global too; `none` - only your events. A bit farther than the range (version 6: out to
+  the mode's reach, where players read garbled letters) it hears the line garbled as they do, the letters it didn't
+  make out as ⬚ - tell your character what the squares mean; its name is looked for in what it made out.
 - `ProxComms.event(id, "the alarm went off")` - a line from the game for it to hear (and answer);
   `ProxComms.note(id, "Wilson fed you")` - what it should know with its next line, once (version 2:
   `ProxComms.noted(id)` - how many still wait, 0 once a line took them; `ProxComms.note(id, nil)` takes them back, to

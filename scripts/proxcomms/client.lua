@@ -54,7 +54,7 @@ end
 CL.LIFE_MIN, CL.LIFE_PER_CHAR, CL.LIFE_MAX = 2.5, 0.1, 12
 CL.REVEAL_HOLD = 1
 CL.LIVE_LIFE = 4
-CL.GARBLE_MAX = 0.75          -- the share of letters made out at the inner edge of the buffer
+CL.GARBLE_MAX = C.GARBLE_MAX  -- the share of letters made out at the inner edge of the buffer
 CL.SAMPLE_EVERY, CL.SAMPLE_KEEP = 0.1, 40
 
 -- ---- the game

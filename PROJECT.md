@@ -85,6 +85,13 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Agent API 6: agents hear garbled lines in the buffer (2026-11-17, for the AI Villagers - the user: "squares in
+  speeches mean they are not close enough to hear the full speech"):** `A.hear` gave a near / named / engaged agent a
+  line only within the mode's range, whole. Now between the range and the reach (`S.ranges[mode]` [1] and [2]) it
+  gets it garbled as a player there reads it (`T.garble`, the fraction by distance times `C.GARBLE_MAX`, moved to
+  config from the client; a seed from the line, so it garbles alike for all), "from" kept, a normal line (scored like
+  any; a mod's onScores sees the squares). Named / engaged detection on what it made out: a name lost in the garble
+  is not heard.
 - **Bubbles kept out from behind the HUD (the user, 2026-11-16: "the speech bubbles are often drawn behind the game's
   own UI when players speak off the screen, which makes them impossible to read"; "can you draw boundaries around
   these UI elements"):** the bubbles layer is at the back of the HUD (`MoveToBack`), and a docked bubble kept only 24

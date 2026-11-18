@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 5, "agents: API 5")
+    eq(AG.API, 6, "agents: API 6")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -1158,6 +1158,39 @@ do
     sentToClient = {}
     AG.handle("say", ms)
     check(AG.eng.mira and AG.eng.mira["agent:gus:1"], "engaged with Gus")
+    -- (API 6) a line from the buffer zone (between the mode's range and its reach) heard garbled, as a player there
+    --  reads it; past the reach nothing; a name lost in the garble not heard
+    do
+        local rs = AG.S.ranges.s
+        local here = {Transform = {GetWorldPosition = function() return 0, 0, 500 end}, IsValid = function() return true end}
+        AG.define("ear", {persona = "x", name = "Ear", entity = here, hears = "near"})
+        AG.define("nom", {persona = "x", name = "Rosalind", entity = here, hears = "named"})
+        local function heardBy(kid)
+            local out = {}
+            for _, u in ipairs(upsFor("line", kid)) do if not u.t.context then out[#out + 1] = u.t end end
+            return out
+        end
+        sentToClient = {}
+        AG.hear("KU_bob", "Bob", "the berries are over by the big rock", "s", rs[1] - 1, 500)
+        local l1 = heardBy("ear:1")[1]
+        check(l1 and l1.text == "the berries are over by the big rock" and l1.from.id == "KU_bob", "within the range: whole")
+        sentToClient = {}
+        AG.hear("KU_bob", "Bob", "the berries are over by the big rock", "s", (rs[1] + rs[2]) / 2, 500)
+        local l2 = heardBy("ear:1")[1]
+        check(l2 and l2.text:find(T.GARBLE, 1, true) and l2.text ~= "the berries are over by the big rock" and l2.from.name == "Bob",
+            "in the buffer: garbled, as a player there reads it (who said it kept)")
+        sentToClient = {}
+        AG.hear("KU_bob", "Bob", "the berries are over by the big rock", "s", rs[2] + 2, 500)
+        eq(#heardBy("ear:1"), 0, "past the reach: nothing")
+        sentToClient = {}
+        AG.hear("KU_bob", "Bob", "Rosalind, come here", "s", rs[1] - 1, 500)
+        eq(#heardBy("nom:1"), 1, "a named agent near: its name heard")
+        sentToClient = {}
+        AG.hear("KU_cid", "Cid", "Rosalind, come here", "s", rs[2] - 0.2, 500)
+        eq(#heardBy("nom:1"), 0, "its name lost in the garble (at the edge of the reach): not heard")
+        AG.define("ear", nil)
+        AG.define("nom", nil)
+    end
     -- (API 4) onSay: a reply before it is said - false: nothing (not heard by the others either), a string: that
     -- instead, nil or an error: as it is; such an agent shows no live words
     local vetted = {}
