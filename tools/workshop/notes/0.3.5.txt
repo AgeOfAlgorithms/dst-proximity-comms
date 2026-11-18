@@ -1,0 +1,4 @@
+[h2]0.3.5[/h2]
+[list]
+[*][b]Fix: worlds with several big AI characters[/b] - with three or more large AI characters (like the AI Villagers), only one of them ever answered: their descriptions were sent to Koetama all at once, which was more than it accepts. They now go over in parts, so every character answers.
+[/list]

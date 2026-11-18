@@ -3,7 +3,7 @@ local ru = locale == "ru"
 
 name = "Proximity Comms (Text and Voice Chat)"
 author = "McPuppetFace"
-version = "0.3.4"
+version = "0.3.5"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
