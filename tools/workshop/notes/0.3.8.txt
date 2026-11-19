@@ -1,0 +1,6 @@
+[h2]0.3.8[/h2]
+[list]
+[*][b]Is your Koetama up to date?[/b] - when Koetama connects, the chat now says whether it is up to date, or which version to update to. You can also see it with [b]/pc koetama[/b] and on the settings' Voice page.
+[*][b]AI characters with longer rules and more actions[/b] - with Koetama 0.5.19 or later, an AI character's description can be up to 32 KB (was 8 KB) and it can have up to 64 actions (was 32). With an older Koetama, the first 8 KB and the first 16 or 32 actions are used, as before.
+[*][b]Fix: very large AI characters[/b] - an AI character's description over about 30 KB was cut off on its way to the admin's game, so the character never answered. It now arrives whole.
+[/list]

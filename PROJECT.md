@@ -86,6 +86,10 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Is Koetama up to date (the user, 2026-11-19):** `C.KOETAMA_LATEST` (the newest released Koetama when the mod was
+  made - raise it with each Koetama release), or a newer `latest` in Koetama's hello (not sent yet - asked of the
+  Koetama session): when Koetama connects, a chat line "up to date (0.5.18)" or "0.5.18 is out (you have 0.5.17)"
+  (`K.updateLine`; `K_OLD` below KOETAMA_MIN), also in `/pc koetama` and the settings' Voice page.
 - **Agent API 8: personas up to 32 KB, up to 64 functions (2026-11-19, the user via the AI Villagers: "8kb is still too
   small for rules. maybe it should be 32kb", "ok time to increase the functions to 64 then"):** a shard keeps a
   persona up to 32768 bytes and 64 functions; the brain sends the first `agent_persona` bytes (8192 when its hello has

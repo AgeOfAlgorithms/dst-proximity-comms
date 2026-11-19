@@ -233,6 +233,7 @@ function PCSettingsScreen:ShowPage(i)
             add(TEMPLATES.StandardButton(function() VisitURL(C.KOETAMA_URL) end, L("OPEN_PAGE"), {260, 45}))
         else
             add(self:Line(K.statusLines()[1], UICOLOURS.WHITE), false, ROW_H * 1.5)
+            add(self:Line(K.updateLine(), UICOLOURS.WHITE), false, ROW_H)
         end
         add(self:Spinner(L("ROW_MIC"), {{L("MIC_AUTO"), "auto"}, {L("MIC_PTT"), "ptt"}, {L("MIC_ALWAYS"), "always"}, {L("MIC_OFF"), "off"}},
             Settings.mic, function(v) Settings.mic = v Settings.save() K.poke() end))

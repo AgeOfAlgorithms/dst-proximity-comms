@@ -19,7 +19,7 @@ local K = {
     URL = "http://127.0.0.1:" .. C.KOETAMA_PORT .. "/",
     online = nil,             -- nil: not tried yet; true / false
     session = 0, ack = 0,
-    features = {}, version = "", outdated = false, said = {},
+    features = {}, version = "", outdated = false, said = {}, latestSaid = "",
     speech = "", mic = "", voiceState = "", voicePlayers = {}, talking = {},
     into = nil, pairs = {}, pairKeys = {},
     lines = {}, nextId = 1, cache = {}, cacheN = 0, buckets = {}, retry = {},
@@ -269,7 +269,7 @@ end
 function K.gone()
     if K.online == true then K.CL.system(L("K_GONE")) end
     K.online = false
-    K.features, K.version, K.outdated = {}, "", false
+    K.features, K.version, K.outdated, K.latestSaid = {}, "", false, ""
     K.speech, K.mic, K.voiceState, K.voicePlayers, K.talking = "", "", "", {}, {}
     K.into, K.pairs, K.pairKeys, K.lines, K.retry = nil, {}, {}, {}, {}
     K.roomOffer, K.roomTries = nil, 0
@@ -308,11 +308,12 @@ function K.onObject(o)
         for _, f in ipairs(type(o.features) == "table" and o.features or {}) do K.features[f] = true end
         K.version = tostring(o.version or "")
         K.outdated = C.olderThan(K.version, C.KOETAMA_MIN)
+        K.latestSaid = type(o.latest) == "string" and o.latest or ""
         if K.A then K.A.onHello(K.features, o) end
         if not K.said.hello then
             K.said.hello = true
-            CL.system(L("K_CONNECTED"))
-            if K.outdated then CL.system(L("K_OLD", K.version)) end
+            CL.system(L("K_CONNECTED", K.version))
+            CL.system(K.updateLine())
         end
     elseif t == "speech" then
         K.onSpeech(o)
@@ -530,6 +531,21 @@ function K.tick()
     end
 end
 
+-- the newest Koetama known: this mod's C.KOETAMA_LATEST, or a newer one Koetama's hello names
+function K.latest()
+    local l = C.KOETAMA_LATEST
+    if K.latestSaid ~= "" and C.olderThan(l, K.latestSaid) then l = K.latestSaid end
+    return l
+end
+
+-- (connected) is it up to date: a line for the chat, /pc koetama and the settings
+function K.updateLine()
+    if K.outdated then return L("K_OLD", K.version) end
+    local l = K.latest()
+    if C.olderThan(K.version, l) then return L("K_UPDATE", l, K.version) end
+    return L("K_UPTODATE", K.version)
+end
+
 -- /pc koetama
 function K.statusLines()
     local out = {}
@@ -538,7 +554,7 @@ function K.statusLines()
     else
         out[1] = L("VOICE_STATE", K.version, K.speech ~= "" and K.speech or "-", K.mic ~= "" and K.mic or "-",
             K.voiceState ~= "" and K.voiceState or "-")
-        if K.outdated then out[#out + 1] = L("K_OLD", K.version) end
+        out[#out + 1] = K.updateLine()
         if K.into == nil then out[#out + 1] = L("TR_WAIT")
         elseif K.into == "" then out[#out + 1] = L("TR_OFF")
         else out[#out + 1] = L("TR_INTO", Strings.langName(K.into)) end

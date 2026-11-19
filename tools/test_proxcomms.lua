@@ -2240,6 +2240,27 @@ do
     K.version = ""
     eq(K.maxBody(), K.MAX_BODY, "no hello yet: 64 KB")
     K.version = "0.5.5"
+    -- (the user, 2026-11-19: users told whether their Koetama is up to date: C.KOETAMA_LATEST, or a newer "latest" in
+    --  Koetama's hello - in the chat when it connects, /pc koetama and the settings)
+    do
+        local v0, o0, l0 = K.version, K.outdated, K.latestSaid
+        K.outdated, K.latestSaid = false, ""
+        K.version = C.KOETAMA_LATEST
+        eq(K.updateLine(), Strings.L("K_UPTODATE", C.KOETAMA_LATEST), "Koetama as new as this mod knows: up to date")
+        K.version = "0.5.6"
+        eq(K.updateLine(), Strings.L("K_UPDATE", C.KOETAMA_LATEST, "0.5.6"), "an older one: the version to update to")
+        K.version, K.latestSaid = C.KOETAMA_LATEST, "9.0.0"
+        eq(K.updateLine(), Strings.L("K_UPDATE", "9.0.0", C.KOETAMA_LATEST), "a newer one Koetama's hello names counts")
+        K.latestSaid = "0.0.1"
+        eq(K.updateLine(), Strings.L("K_UPTODATE", C.KOETAMA_LATEST), "(an older one it names does not)")
+        K.version, K.outdated = "0.5.1", true
+        eq(K.updateLine(), Strings.L("K_OLD", "0.5.1"), "under the minimum: the stronger warning")
+        K.version, K.outdated, K.latestSaid = "0.5.6", false, ""
+        local found = false
+        for _, line in ipairs(K.statusLines()) do if line == Strings.L("K_UPDATE", C.KOETAMA_LATEST, "0.5.6") then found = true end end
+        check(found, "/pc koetama says it too")
+        K.version, K.outdated, K.latestSaid = v0, o0, l0
+    end
     local scr = Screen(CL, K, 2)
     local mic
     for _, w in ipairs(made) do if w.label == Strings.L("ROW_MIC") then mic = w end end
