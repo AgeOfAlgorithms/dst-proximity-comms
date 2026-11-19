@@ -9,7 +9,7 @@ C.KOETAMA_MIN = "0.5.5"           -- older: feeds over 1 KB wait 1 s in DST's HT
 -- the newest Koetama released when this version of the mod was made (raise it with each Koetama release): an older one
 -- connected is told to update (a newer "latest" in Koetama's own hello, from its update check, counts too - the user,
 -- 2026-11-19: "a notification somewhere that lets users know that their koetama, if connected, is up to date or not")
-C.KOETAMA_LATEST = "0.5.18"
+C.KOETAMA_LATEST = "0.5.19"
 
 C.TILE = 4
 -- defaults (the user, 2026-10-16: "whisper should be much smaller than speak" - 8, 18 and 32 tiles; 2026-11-18: "reduce
