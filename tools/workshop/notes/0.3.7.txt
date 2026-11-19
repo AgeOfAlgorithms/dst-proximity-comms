@@ -1,0 +1,4 @@
+[h2]0.3.7[/h2]
+[list]
+[*][b]Fix: a speaker's two bubbles swapping places[/b] - when a player or AI character with two speech bubbles over their head walked around, the bubbles kept flipping places. Now the newest line always stays nearest the head, with the one before above it.
+[/list]
