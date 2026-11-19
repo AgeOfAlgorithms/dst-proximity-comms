@@ -1,0 +1,6 @@
+[h2]0.3.6[/h2]
+[list]
+[*][b]Shorter default distances[/b] - Whisper 6 tiles, Speak 14, Yell 26 (were 8, 18 and 32), each a bit farther as garbled letters. Worlds where an admin set their own distances keep them; the host can still change all three in the mod's settings.
+[*][b]AI characters hear garbled lines[/b] - a bit beyond a line's range, where players see garbled letters, AI characters now get the same garbled line instead of nothing.
+[*][b]AI characters can know more[/b] - with Koetama 0.5.18 or later, what a mod tells its AI characters about the world can be up to 8 KB (was 2 KB).
+[/list]
