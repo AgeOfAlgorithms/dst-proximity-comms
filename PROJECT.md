@@ -19,9 +19,10 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
 - **Ghosts:** as the base game (checked in its scripts: a ghost keeps positive health, `OnMakePlayerGhost` sets
   `RESURRECT_HEALTH`, so `talker:Say` shows its chat normally; only its talk sound is `ghost_LP`; `CraftOooh` is only
   for scripted character quips). So ghosts chat and talk as usual; their voice gets a light effect (reverb, wobble).
-- **Ranges (the user, 2026-10-16): Whisper 8, Speak 18, Yell 32 tiles** (32 / 72 / 128 units; garbled to x1.4 / x1.4 /
+- **Ranges (the user, 2026-11-18, 20 % shorter: "reduce the default whisper, speak, and yell distances by 20%"):
+  Whisper 6, Speak 14, Yell 26 tiles** (24 / 56 / 104 units; garbled to x1.4 / x1.4 /
   x1.375), the host's mod settings, and admins in game (`/pc range <whisper> <speak> <yell>`, the Chat page; kept in
-  the world's save). Whisper < Speak < Yell (C.ranges). Was 8 / 16 for Speak / Yell, Whisper DST's (40 units).
+  the world's save). Whisper < Speak < Yell (C.ranges). Was 8 / 18 / 32 (2026-10-16), before that 8 / 16 for Speak / Yell, Whisper DST's (40 units).
 - **Whisper (the user, 2026-10-16: "add garbled zone"):** DST's own (TheNet:Say, whispered; DST shows it within 40
   units, chathistory.lua) in the mod's Whisper range instead: a bubble as a Speak line's (clear, garbled in its
   buffer, revealed walking in), its history line the mod's ("[W]"; DST's OnSay whisper line left out), bubbles on or

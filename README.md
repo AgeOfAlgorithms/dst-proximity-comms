@@ -10,9 +10,9 @@ works fully.
 
 | mode | who gets it |
 |---|---|
-| **Whisper** | players within 8 tiles; garbled to 11 tiles (the game's own whisper, in the mod's range) |
-| **Speak** | players within 18 tiles see your words; from 18 to 25 tiles they see them garbled (⬚ for the letters they don't make out, more real letters the closer they are). Walking up to someone while their line is up reveals it. |
-| **Yell** | players within 32 tiles; garbled to 44 tiles |
+| **Whisper** | players within 6 tiles; garbled to 8 tiles (the game's own whisper, in the mod's range) |
+| **Speak** | players within 14 tiles see your words; from 14 to 20 tiles they see them garbled (⬚ for the letters they don't make out, more real letters the closer they are). Walking up to someone while their line is up reveals it. |
+| **Yell** | players within 26 tiles; garbled to 36 tiles |
 | **Global** | everyone: the game's own chat |
 
 The host chooses the three distances in the mod's settings (Whisper always shorter than Speak, Yell always farther),

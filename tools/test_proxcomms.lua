@@ -173,8 +173,8 @@ check(math.abs(r.s[2] - 44.8) < 1e-9 and r.y[1] == 64 and math.abs(r.y[2] - 88) 
 eq(C.ranges(8, 5).yellTiles, 9, "yell always past speak")
 do
     local d = C.ranges()
-    check(d.whisperTiles == 8 and d.speakTiles == 18 and d.yellTiles == 32, "defaults: Whisper 8, Speak 18, Yell 32 tiles")
-    eq(d.w[2], 8 * 4 * 1.4, "Whisper garbled to 40 % past it, as Speak")
+    check(d.whisperTiles == 6 and d.speakTiles == 14 and d.yellTiles == 26, "defaults: Whisper 6, Speak 14, Yell 26 tiles")
+    eq(d.w[2], 6 * 4 * 1.4, "Whisper garbled to 40 % past it, as Speak")
     eq(C.ranges(8, 16, 12).whisperTiles, 7, "whisper always under speak")
     eq(C.voiceRange(d, "w")[2], d.w[2], "a whispered voice carries as far as its words, garbled")
 end

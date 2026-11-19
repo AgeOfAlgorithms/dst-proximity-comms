@@ -7,9 +7,9 @@ With the free [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url] app 
 [h2]Modes[/h2]
 [table]
 [tr][th]Mode[/th][th]Who gets it[/th][/tr]
-[tr][td][b]Whisper[/b][/td][td]players within 8 tiles; garbled up to 11 tiles[/td][/tr]
-[tr][td][b]Speak[/b][/td][td]players within 18 tiles; up to 25 tiles they see it garbled (⬚ for the letters they don't make out - walk closer to read it)[/td][/tr]
-[tr][td][b]Yell[/b][/td][td]players within 32 tiles; garbled up to 44 tiles[/td][/tr]
+[tr][td][b]Whisper[/b][/td][td]players within 6 tiles; garbled up to 8 tiles[/td][/tr]
+[tr][td][b]Speak[/b][/td][td]players within 14 tiles; up to 20 tiles they see it garbled (⬚ for the letters they don't make out - walk closer to read it)[/td][/tr]
+[tr][td][b]Yell[/b][/td][td]players within 26 tiles; garbled up to 36 tiles[/td][/tr]
 [tr][td][b]Global[/b][/td][td]everyone (the game's own chat)[/td][/tr]
 [/table]
 The host sets the Whisper, Speak and Yell distances in the mod's settings, and admins can change them in game ([b]/pc range[/b], or the settings). A Speak or Yell line is only sent to the players close enough to hear it - nobody else's game ever gets it.
@@ -47,10 +47,10 @@ This mod talks only to Koetama on your own PC (127.0.0.1) and never contacts any
 The mod's own text is in English, Simplified Chinese and Russian (it follows the game's language).
 
 [h2]中文[/h2]
-近距离聊天：悄悄话（8 格）、说话（18 格）和大喊（32 格）只有附近的玩家能看到，再远一点只能看到模糊的字；全体是所有人。长句会在气泡里滚动，说话者在屏幕外时气泡贴在屏幕边缘。每个人的聊天记录只包含自己听到的内容。手柄：命令轮盘里的“快捷聊天”。配合免费程序 [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]：近距离语音聊天、实时字幕和离线翻译。命令：/s /y /w /g，/pc help。
+近距离聊天：悄悄话（6 格）、说话（14 格）和大喊（26 格）只有附近的玩家能看到，再远一点只能看到模糊的字；全体是所有人。长句会在气泡里滚动，说话者在屏幕外时气泡贴在屏幕边缘。每个人的聊天记录只包含自己听到的内容。手柄：命令轮盘里的“快捷聊天”。配合免费程序 [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]：近距离语音聊天、实时字幕和离线翻译。命令：/s /y /w /g，/pc help。
 
 [h2]Русский[/h2]
-Чат рядом: шёпот (8 клеток), речь (18 клеток) и крик (32 клетки) видят только игроки поблизости, чуть дальше — неразборчивые буквы; «всем» — все. Длинные реплики прокручиваются, реплики говорящих за краем экрана прижимаются к краю. У каждого игрока своя история чата — только то, что он слышал. Геймпад: «Быстрый чат» в колесе команд. С бесплатной программой [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]: голосовой чат рядом, живые субтитры и офлайн-перевод. Команды: /s /y /w /g, /pc help.
+Чат рядом: шёпот (6 клеток), речь (14 клеток) и крик (26 клеток) видят только игроки поблизости, чуть дальше — неразборчивые буквы; «всем» — все. Длинные реплики прокручиваются, реплики говорящих за краем экрана прижимаются к краю. У каждого игрока своя история чата — только то, что он слышал. Геймпад: «Быстрый чат» в колесе команд. С бесплатной программой [url=https://github.com/AgeOfAlgorithms/koetama]Koetama[/url]: голосовой чат рядом, живые субтитры и офлайн-перевод. Команды: /s /y /w /g, /pc help.
 
 [h2]For mod makers[/h2]
 Every Speak and Yell line raises [b]proxcomms_said[/b] on the server's world (player, userid, mode, text, voice, x, z, range, reach).

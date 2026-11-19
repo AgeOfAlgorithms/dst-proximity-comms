@@ -8,12 +8,13 @@ C.KOETAMA_PORT = 47170            -- the profile's (koetama/dont-starve-together
 C.KOETAMA_MIN = "0.5.5"           -- older: feeds over 1 KB wait 1 s in DST's HTTP client (no "100 Continue")
 
 C.TILE = 4
--- defaults (the user, 2026-10-16: "whisper should be much smaller than speak" - 8, 18 and 32 tiles); the host's mod
+-- defaults (the user, 2026-10-16: "whisper should be much smaller than speak" - 8, 18 and 32 tiles; 2026-11-18: "reduce
+-- the default whisper, speak, and yell distances by 20%" - 6, 14 and 26); the host's mod
 -- settings and admins (/pc range) change them. Whisper is DST's own (TheNet:Say, whispered): DST shows it within 40
 -- units (chathistory.lua, PLAYER_CAMERA_SEE_DISTANCE), the mod within its own range instead, garbled beyond as Speak
-C.WHISPER_TILES = 8
-C.SPEAK_TILES = 18
-C.YELL_TILES = 32
+C.WHISPER_TILES = 6
+C.SPEAK_TILES = 14
+C.YELL_TILES = 26
 C.TILES_MIN, C.TILES_MAX = 2, 64
 C.WHISPER_BUFFER = 1.4            -- the garbled zone beyond the words' range, as a share of it (Teardown's +40 %)
 C.SPEAK_BUFFER = 1.4
