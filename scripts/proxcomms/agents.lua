@@ -63,12 +63,17 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 6                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
-                                -- 4: onSay; 5: final results, max_rounds, the tokens a reply used; 6: garbled lines)
+A.API = 7                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
+                                -- 4: onSay; 5: final results, max_rounds, the tokens a reply used; 6: garbled lines;
+                                -- 7: states up to 8 KB, ProxComms.statemax())
 -- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
 -- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
 A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
 A.FUNCTIONS_OLD = 16            -- what a Koetama takes whose hello has no agent_functions (0.5.14 and older)
+-- (API 7: an agent's state up to 8 KB from Koetama 0.5.18, whose hello says so - "agent_state": 8192; an older one
+-- drops a state over 2048 bytes whole, so it is cut to that. The user's AI Villagers, 2026-11-18: "Around you", 50 kinds)
+A.STATE_MAX = 8192              -- an agent's state kept, at most
+A.STATE_OLD = 2048              -- what a Koetama takes whose hello has no agent_state (0.5.17 and older)
 A.LINE_LIFE = 60                -- s a line waits for its reply (the brain)
 A.LINES_MAX = 32
 A.SEND_FOR = 5                  -- (no longer used: definitions go until a feed carrying them is answered)
@@ -125,6 +130,7 @@ A.eng = {}             -- id -> userid -> when it was named / answered
 A.scores = false       -- the brain's Koetama scores turns (its "caps", on every shard)
 A.functionsMax = A.FUNCTIONS_OLD   -- the functions an agent may have, as the brain's Koetama says (its "caps")
 A.finalOk = false      -- the brain's Koetama ends turns on final results, keeps to max_rounds (its "caps", API 5)
+A.stateMax = A.STATE_OLD   -- an agent's state's most bytes, as the brain's Koetama says (its "caps", API 7)
 A.ROUNDS_MAX = 16
 A.later = {}           -- agents' lines other agents will hear: {due, uid, name, text, mode, x, z, depth, by}
 
@@ -148,6 +154,12 @@ end
 
 function A.agentFunctions()
     return A.functionsMax
+end
+
+-- (API 7) an agent's state's most bytes: 2048 until the brain's Koetama says more (0.5.18 and later: 8192). A longer
+-- state is cut there (put what matters most first)
+function A.stateBytes()
+    return A.stateMax
 end
 
 -- (API) the brain's Koetama scores turns: an agent's criteria do something
@@ -299,7 +311,7 @@ local function stateOf(a)
         s = ok and v or nil
     end
     if type(s) ~= "string" or s == "" then return nil end
-    return T.cutBytes(s, 2048)
+    return T.cutBytes(s, A.stateMax)
 end
 
 -- (server) a line for an agent: what it said without the model and the mod's note first (as context events, once
@@ -522,6 +534,8 @@ function A.handle(kind, t)
         local n = math.floor(tonumber(t.functions) or A.FUNCTIONS_OLD)
         A.functionsMax = math.max(A.FUNCTIONS_OLD, math.min(A.FUNCTIONS_MAX, n))     -- (API 3)
         A.finalOk = t.final == true                                                  -- (API 5)
+        local sb = math.floor(tonumber(t.state) or A.STATE_OLD)
+        A.stateMax = math.max(A.STATE_OLD, math.min(A.STATE_MAX, sb))                -- (API 7)
         return
     end
     local id, shard = A.split(t.kid)
@@ -661,7 +675,7 @@ function A.setOwner(uid)
     A.owner = uid
     if old and old ~= uid and A.isLocal(old) then SendModRPCToClient(clientRPC("agent_owner"), old, false) end
     if uid and A.isLocal(uid) then SendModRPCToClient(clientRPC("agent_owner"), uid, true) end
-    if not uid then A.state, A.scores = "ready", false end
+    if not uid then A.state, A.scores, A.stateMax = "ready", false, A.STATE_OLD end
 end
 
 -- (server, every second) the master's choice kept fresh; calls the mod never answered dropped
@@ -690,7 +704,7 @@ end
 local function sendCaps()
     local b = B()
     A.down("caps", {scores = b.scores == true and b.llm == true, functions = b.maxFn or A.FUNCTIONS_OLD,
-        final = b.final == true and b.llm == true})
+        final = b.final == true and b.llm == true, state = b.maxState or A.STATE_OLD})
 end
 
 -- (client RPC) this game is the brain now (or no longer)
@@ -797,6 +811,8 @@ function A.onHello(features, hello)
     b.maxFn = math.max(1, math.min(A.FUNCTIONS_MAX, n))                -- (API 3: Koetama 0.5.15 says 32)
     b.cutSaid = {}
     b.final = features and features.agent_final == true or false       -- (API 5: Koetama 0.5.16)
+    local sb = math.floor(tonumber(type(hello) == "table" and hello.agent_state) or A.STATE_OLD)
+    b.maxState = math.max(1, math.min(A.STATE_MAX, sb))                -- (API 7: Koetama 0.5.18 says 8192)
     b.scorePending, b.decisions = {}, {}         -- (a new Koetama numbers its turns afresh)
     b.llmAt = -1e9                               -- (said to the server at once)
     if b.on then sendCaps() end
@@ -902,7 +918,8 @@ function A.feed(f)
     local lines = J.array({})
     for _, l in ipairs(b.lines) do
         if #lines < 8 and not l.received then
-            lines[#lines + 1] = {id = l.id, agent = l.agent, text = l.text, from = l.from, state = l.state, context = l.context}
+            local st = type(l.state) == "string" and T.cutBytes(l.state, b.maxState or A.STATE_OLD) or nil   -- (a shard's caps late)
+            lines[#lines + 1] = {id = l.id, agent = l.agent, text = l.text, from = l.from, state = st, context = l.context}
         end
     end
     if #lines > 0 then f.to_agent = lines end

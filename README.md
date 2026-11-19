@@ -171,6 +171,10 @@ ProxComms.agent("pigman", {
   would leave out an agent with more, so only its first 16 are sent: put the ones that matter most first.
   `ProxComms.agentfunctions()` - how many it may have now (16 until the admin's Koetama says 32; the Teardown mod's
   `proxchat.agentfunctions`).
+- **Its state:** up to 8 KB (version 7) with Koetama 0.5.18 or later; an older Koetama would drop a state over 2 KB
+  whole, so it is cut there. `ProxComms.statemax()` - its most bytes now (2048 until the admin's Koetama says 8192).
+  A longer state loses its end: put what matters most first. Send the whole current state with each line - Koetama
+  keeps only the newest in the conversation.
 - **Scores: your mod decides whether it answers** (version 2; with Koetama 0.5.14 or later - `ProxComms.scores()`
   is true). An agent that hears everything near it would answer every line. Give it `criteria` and each turn of
   players' lines is first scored by the model, 0 to 1 on each, and waits for your decision: weigh the scores, add what

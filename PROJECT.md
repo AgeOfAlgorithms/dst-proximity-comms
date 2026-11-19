@@ -86,6 +86,12 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Agent API 7: states up to 8 KB (2026-11-18, for the AI Villagers' "Around you" list of up to 50 kinds):** Koetama
+  0.5.18 (koetama-3b) takes an agent line's state up to 8192 bytes (2048 before; a longer one becomes "" whole) and
+  its hello says `"agent_state": 8192`; it keeps only the newest state in a conversation. The brain reads it
+  (`b.maxState`), sends it in the caps (`state`), each shard cuts to it (`A.stateMax`, `ProxComms.statemax()`), and
+  the brain cuts again in the feed (a shard's caps late). Feeds: up to 256 KB to Koetama 0.5.17 and later
+  (`K.maxBody()`, by the hello's version - no field), 64 KB before.
 - **Agent API 6: agents hear garbled lines in the buffer (2026-11-17, for the AI Villagers - the user: "squares in
   speeches mean they are not close enough to hear the full speech"):** `A.hear` gave a near / named / engaged agent a
   line only within the mode's range, whole. Now between the range and the reach (`S.ranges[mode]` [1] and [2]) it

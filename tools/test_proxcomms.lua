@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 6, "agents: API 6")
+    eq(AG.API, 7, "agents: API 7")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -921,6 +921,48 @@ do
     eq(AG.agentFunctions(), 32, "agentfunctions(): never over 32")
     AG.onDown(ana, "caps", J.encode({scores = true}))
     eq(AG.agentFunctions(), 16, "caps without functions (an older brain): 16")
+    AG.onDown(ana, "caps", J.encode(caps32))
+    -- (API 7) states: cut at 2048 until the brain's Koetama says more (0.5.18: "agent_state": 8192), in the caps to
+    -- every shard; the brain cuts too, to its own Koetama's (a shard's caps late)
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32}))
+    eq(AG.stateBytes(), 2048, "statemax(): 2048 before Koetama says more")
+    local bigState = string.rep("a", 9000)
+    AG.define("owl", {persona = "x", hears = "all", state = function() return bigState end})
+    local function owlLine(text)
+        sentToClient = {}
+        AG.hear("KU_bob", "Bob", text, "g", 11, 0)
+        local u = upsFor("line", "owl:1")[1]
+        return u and u.t
+    end
+    local ol = owlLine("hi owl")
+    eq(ol and #ol.state, 2048, "a state of 9000 bytes: cut at 2048")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32, state = 8192}))
+    eq(AG.stateBytes(), 8192, "statemax(): 8192 when the caps say so")
+    ol = owlLine("hi again owl")
+    eq(ol and #ol.state, 8192, "then cut at 8192")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32, state = 99999}))
+    eq(AG.stateBytes(), 8192, "statemax(): never over 8192")
+    AG.onUp("def", J.encode(upsFor("def", "owl:1")[1] and upsFor("def", "owl:1")[1].t or {}))
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
+    AG.onUp("line", J.encode(ol))
+    local _, _, owlLines = feedFor("owl:1")
+    eq(owlLines[1] and #owlLines[1].state, 2048, "the brain's Koetama without agent_state: the feed's state cut at 2048")
+    local capsOld = downs("caps")[1]
+    check(capsOld and capsOld.state == 2048, "caps: state 2048")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32, agent_state = 8192})
+    AG.onUp("line", J.encode(ol))
+    _, _, owlLines = feedFor("owl:1")
+    local longest = 0
+    for _, x in ipairs(owlLines) do longest = math.max(longest, #(x.state or "")) end
+    eq(longest, 8192, "Koetama 0.5.18 (agent_state 8192): the whole 8 KB state")
+    local caps8 = downs("caps")[1]
+    check(caps8 and caps8.state == 8192, "caps: state 8192 - to every shard")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32}))
+    eq(AG.stateBytes(), 2048, "caps without state (an older brain): 2048")
+    AG.define("owl", nil)
+    AG.onUp("remove", J.encode({kid = "owl:1"}))
     AG.onDown(ana, "caps", J.encode(caps32))
     AG.define("cat", nil)
     AG.onUp("remove", J.encode({kid = "cat:1"}))
@@ -2060,6 +2102,12 @@ do
     made = {}
     K.online = true
     K.version, K.speech, K.mic, K.voiceState = "0.5.5", "ready", "open", "connected"
+    eq(K.maxBody(), K.MAX_BODY, "Koetama 0.5.5: feeds up to 64 KB")
+    K.version = "0.5.17"
+    eq(K.maxBody(), K.MAX_BODY_BIG, "Koetama 0.5.17: feeds up to 256 KB")
+    K.version = ""
+    eq(K.maxBody(), K.MAX_BODY, "no hello yet: 64 KB")
+    K.version = "0.5.5"
     local scr = Screen(CL, K, 2)
     local mic
     for _, w in ipairs(made) do if w.label == Strings.L("ROW_MIC") then mic = w end end
