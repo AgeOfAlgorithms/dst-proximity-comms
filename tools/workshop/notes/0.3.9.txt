@@ -1,0 +1,4 @@
+[h2]0.3.9[/h2]
+[list]
+[*][b]Koetama 0.5.19 is out[/b] - if yours is older, the chat now tells you when Koetama connects. From Koetama 0.5.20 on, Koetama tells the mod its newest version itself.
+[/list]

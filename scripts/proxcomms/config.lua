@@ -2,13 +2,14 @@
 local C = {}
 
 C.NAMESPACE = "proxcomms"
-C.VERSION = "0.3.8"
+C.VERSION = "0.3.9"
 C.KOETAMA_URL = "https://github.com/AgeOfAlgorithms/koetama"
 C.KOETAMA_PORT = 47170            -- the profile's (koetama/dont-starve-together-proximity-comms.json)
 C.KOETAMA_MIN = "0.5.5"           -- older: feeds over 1 KB wait 1 s in DST's HTTP client (no "100 Continue")
--- the newest Koetama released when this version of the mod was made (raise it with each Koetama release): an older one
--- connected is told to update (a newer "latest" in Koetama's own hello, from its update check, counts too - the user,
--- 2026-11-19: "a notification somewhere that lets users know that their koetama, if connected, is up to date or not")
+-- the newest Koetama known to this mod: an older one connected is told to update (the user, 2026-11-19: "a notification
+-- somewhere that lets users know that their koetama, if connected, is up to date or not"). Koetama 0.5.20 and later say
+-- the newest themselves ("latest" in the hello, from their update check), so this is only for older ones and --cli -
+-- no need to raise it with each release (the user: "Why increment version number when you can just ask ... koetama?")
 C.KOETAMA_LATEST = "0.5.19"
 
 C.TILE = 4
