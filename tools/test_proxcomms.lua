@@ -657,9 +657,18 @@ do
     AG.S, AG.CL, AG.K = S, CL, K
     S.A, K.A = AG, AG
     local function ups(kind)
-        local out = {}
+        local out, parts = {}, {}
         for _, m in ipairs(sentToClient) do
-            if m.name == "agent_up" and (kind == nil or m.args[1] == kind) then out[#out + 1] = {to = m.to, kind = m.args[1], t = J.decode(m.args[2])} end
+            if m.name == "agent_up" and m.args[1] == "part" then     -- (a long message in parts: put together)
+                local id, i, n, k, piece = m.args[2]:match("^([^|]+)|(%d+)|(%d+)|([^|]+)|(.*)$")
+                parts[id] = parts[id] or {n = tonumber(n), ps = {}, got = 0}
+                parts[id].ps[tonumber(i)], parts[id].got = piece, parts[id].got + 1
+                if parts[id].got == parts[id].n and (kind == nil or k == kind) then
+                    out[#out + 1] = {to = m.to, kind = k, t = J.decode(table.concat(parts[id].ps)), parts = parts[id].n}
+                end
+            elseif m.name == "agent_up" and (kind == nil or m.args[1] == kind) then
+                out[#out + 1] = {to = m.to, kind = m.args[1], t = J.decode(m.args[2])}
+            end
         end
         return out
     end
@@ -979,6 +988,29 @@ do
     AG.define("sage", {persona = string.rep("r", 40000)})
     local sd = upsFor("def", "sage:1")[1]
     eq(sd and #sd.t.persona, 32768, "a persona of 40000 bytes: 32768 kept")
+    -- (a message over A.PART goes to the brain in parts - DST drops an RPC with a long string: the in-game test of
+    --  2026-11-19, a ~99 KB definition arrived cut to 33353 bytes)
+    local partMsgs, longest = {}, 0
+    for _, m in ipairs(sentToClient) do
+        if m.name == "agent_up" and m.args[1] == "part" then partMsgs[#partMsgs + 1] = m.args[2] longest = math.max(longest, #m.args[2]) end
+    end
+    check(sd and sd.parts == #partMsgs and #partMsgs == 3 and longest <= AG.PART + 64,
+        "a 32 KB definition: in parts of at most 12 KB (" .. #partMsgs .. " parts, the longest " .. longest .. ")")
+    local pieces = AG.pieces("ab" .. "\226\148\128" .. "cd", 3)
+    check(pieces[1] == "ab" and pieces[2] == "\226\148\128" and pieces[3] == "cd", "parts never split a character")
+    eq(table.concat(AG.pieces(string.rep("x", 25), 10)), string.rep("x", 25), "parts: all of it, in order")
+    -- the brain puts them together - out of order too; a part twice counts once; one never whole is dropped
+    AG.onUp("part", partMsgs[3])
+    AG.onUp("part", partMsgs[1])
+    AG.onUp("part", partMsgs[1])
+    check(AG.brain.defs["sage:1"] == nil, "(two of three parts: not yet)")
+    AG.onUp("part", partMsgs[2])
+    eq(AG.brain.defs["sage:1"] and #AG.brain.defs["sage:1"].def.persona, 32768, "the brain: the parts put together")
+    AG.onUp("part", "9.9|1|2|def|{")
+    advance(AG.PART_LIFE + 1)
+    AG.onUp("part", "9.10|1|2|def|{")
+    check(AG.brain.parts["9.9"] == nil and AG.brain.parts["9.10"] ~= nil, "a message never whole: dropped after 30 s")
+    AG.brain.parts = {}
     AG.onUp("def", J.encode(sd.t))
     sentToServer = {}
     AG.onHello({llm = true, agent_scores = true}, {type = "hello", version = "0.5.18", agent_functions = 32, agent_state = 8192})

@@ -226,14 +226,44 @@ local function defOf(a)
 end
 
 -- (server) to the brain: on this shard, straight to its game; else through the shards (the one it is on hands it on)
-function A.up(kind, t)
-    if not A.owner then return false end
-    local s = J.encode(t)
+-- (a message to the brain over A.PART goes in parts, put together again by the brain (A.onUp "part"). DST cuts a mod
+-- RPC's long string, silently: the in-game test of 2026-11-19 (devtest SCENE=bigdef) - a definition of 98889 bytes
+-- (a 32 KB persona, 64 functions) arrived as its first 33353, no JSON, so never; in 12 KB parts, whole)
+A.PART = 12 * 1024
+A.PART_LIFE = 30        -- s the brain keeps the parts of a message not yet whole
+A.partN = 0
+
+-- s cut into pieces of at most `most` bytes, each at a character's start (DST's strings: never half a character)
+function A.pieces(s, most)
+    local out, i = {}, 1
+    while i <= #s do
+        local j = math.min(#s, i + most - 1)
+        while j < #s and j > i and s:byte(j + 1) >= 0x80 and s:byte(j + 1) < 0xC0 do j = j - 1 end
+        out[#out + 1] = s:sub(i, j)
+        i = j + 1
+    end
+    return out
+end
+
+local function upRaw(kind, s)
     if A.isLocal(A.owner) then
         SendModRPCToClient(clientRPC("agent_up"), A.owner, kind, s)
     else
         toShards("agent_up", kind, s)
     end
+end
+
+function A.up(kind, t)
+    if not A.owner then return false end
+    local s = J.encode(t)
+    if #s <= A.PART then
+        upRaw(kind, s)
+        return true
+    end
+    A.partN = A.partN + 1
+    local id = A.shard() .. "." .. A.partN
+    local ps = A.pieces(s, A.PART)
+    for i, p in ipairs(ps) do upRaw("part", id .. "|" .. i .. "|" .. #ps .. "|" .. kind .. "|" .. p) end
     return true
 end
 
@@ -743,6 +773,21 @@ end
 function A.onUp(kind, s)
     local b = B()
     if not b.on or type(kind) ~= "string" or type(s) ~= "string" then return end
+    if kind == "part" then                              -- (a long message's part: A.up)
+        local id, i, n, k, p = s:match("^([^|]+)|(%d+)|(%d+)|([^|]+)|(.*)$")
+        i, n = tonumber(i), tonumber(n)
+        if not id or not i or not n or i < 1 or i > n or n > 64 or k == "part" then return end
+        b.parts = b.parts or {}
+        local t = now()
+        for pid, m in pairs(b.parts) do if t - m.t > A.PART_LIFE then b.parts[pid] = nil end end
+        local m = b.parts[id]
+        if not m or m.n ~= n or m.kind ~= k then m = {n = n, kind = k, got = 0, ps = {}, t = t} b.parts[id] = m end
+        if m.ps[i] == nil then m.ps[i], m.got = p, m.got + 1 end
+        m.t = t
+        if m.got < n then return end
+        b.parts[id] = nil
+        return A.onUp(k, table.concat(m.ps))
+    end
     local t = J.decode(s)
     if type(t) ~= "table" or type(t.kid) ~= "string" and kind ~= "result" then return end
     if kind == "def" then

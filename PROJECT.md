@@ -91,8 +91,10 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   persona up to 32768 bytes and 64 functions; the brain sends the first `agent_persona` bytes (8192 when its hello has
   none: an older Koetama leaves out an agent over it) and the first `agent_functions`; the caps carry `persona`
   (`ProxComms.personamax()`). Definitions in a feed up to DEF_BUDGET_BIG (160 KB) to a Koetama taking 256 KB feeds
-  (`b.bigFeeds`: 0.5.17 or agent_state), else DEF_BUDGET. Not verified: a ~100 KB definition (32 KB persona, 64
-  functions of 1 KB) in one mod RPC, shard to the brain's client - DST's limit on an RPC string is not known here.
+  (`b.bigFeeds`: 0.5.17 or agent_state), else DEF_BUDGET. A message to the brain over 12 KB goes in parts (A.PART; "part" RPCs,
+  put together by the brain, dropped after 30 s if never whole): DST cuts a mod RPC's long string - the in-game test
+  (devtest SCENE=bigdef, 2026-11-19): a 98889-byte definition in one RPC arrived as 33353 bytes; in 9 parts, whole,
+  and Koetama 0.5.19 listed it. (Tested with the host as the brain; a dedicated server's RPC over the network not.)
 - **Agent API 7: states up to 8 KB (2026-11-18, for the AI Villagers' "Around you" list of up to 50 kinds):** Koetama
   0.5.18 (koetama-3b) takes an agent line's state up to 8192 bytes (2048 before; a longer one becomes "" whole) and
   its hello says `"agent_state": 8192`; it keeps only the newest state in a conversation. The brain reads it

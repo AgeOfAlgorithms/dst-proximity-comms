@@ -62,7 +62,7 @@ AddPlayerPostInit(function(inst)
         started = true
         -- (SHOTS=1: the screenshots' scenes instead of the checks - shots.lua)
         -- (a scene instead: <name>.txt present -> <name>.lua; SHOTS=1 / SCENE=<name> in run.sh)
-        for _, scene in G.ipairs({"shots", "history", "languages", "garbled", "agents", "agents2", "slime", "salamander", "chatui", "villagers", "hud"}) do
+        for _, scene in G.ipairs({"shots", "history", "languages", "garbled", "agents", "agents2", "slime", "salamander", "chatui", "villagers", "hud", "bigdef"}) do
             if G.kleifileexists(MODROOT .. scene .. ".txt") then
                 local fn = G.kleiloadlua(MODROOT .. scene .. ".lua")
                 if type(fn) == "function" then fn(G, out, later) else out("ERROR", scene .. ".lua: " .. G.tostring(fn)) end
