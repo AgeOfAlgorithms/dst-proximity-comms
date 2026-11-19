@@ -6,12 +6,12 @@
 -- each, acts and answers.
 --
 -- A MOD CALLS (server; GLOBAL.ProxComms - README "Agents"):
---   ProxComms.agent(id, def)    define or change an agent (nil: remove). def: persona (required: who it is, up to 8 KB),
+--   ProxComms.agent(id, def)    define or change an agent (nil: remove). def: persona (required: who it is, up to 32 KB),
 --                               name, entity (an inst: it hears and speaks where it is) or x / z, hears (near - the
 --                               default - / named / engaged / all / none; API 6: in the buffer past the mode's range a
 --                               line comes garbled, ⬚ for the letters not made out), mode (whisper / speak / yell /
 --                               global),
---                               functions (a list of up to 32 {name, description, parameters}, or that list as JSON:
+--                               functions (a list of up to 64 {name, description, parameters}, or that list as JSON:
 --                               API 3 - with an older Koetama only the first 16 go, ProxComms.agentfunctions()), state (a
 --                               string or a function returning one: what it should know now), max_words, stream (false:
 --                               no live words), character (false: not a character - the persona is the whole prompt),
@@ -63,17 +63,25 @@ local T = require "proxcomms/text"
 local J = require "proxcomms/json"
 
 local A = {}
-A.API = 7                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
+A.API = 8                       -- ProxComms.version (2: scores, agents hearing agents; 3: up to 32 functions;
                                 -- 4: onSay; 5: final results, max_rounds, the tokens a reply used; 6: garbled lines;
-                                -- 7: states up to 8 KB, ProxComms.statemax())
+                                -- 7: states up to 8 KB, ProxComms.statemax(); 8: personas up to 32 KB,
+                                -- ProxComms.personamax(), up to 64 functions)
 -- (API 3: an agent may have up to 32 functions from Koetama 0.5.15, whose hello says so - "agent_functions": 32; an older
 -- one takes 16 and leaves out an agent with more, so the brain sends it the first 16. The user, 2026-11-15)
-A.FUNCTIONS_MAX = 32            -- an agent's functions kept, at most
+A.FUNCTIONS_MAX = 64            -- an agent's functions kept, at most (32 until API 8: the user, 2026-11-19,
+                                -- "ok time to increase the functions to 64 then"; as many as the hello's agent_functions)
 A.FUNCTIONS_OLD = 16            -- what a Koetama takes whose hello has no agent_functions (0.5.14 and older)
 -- (API 7: an agent's state up to 8 KB from Koetama 0.5.18, whose hello says so - "agent_state": 8192; an older one
 -- drops a state over 2048 bytes whole, so it is cut to that. The user's AI Villagers, 2026-11-18: "Around you", 50 kinds)
 A.STATE_MAX = 8192              -- an agent's state kept, at most
 A.STATE_OLD = 2048              -- what a Koetama takes whose hello has no agent_state (0.5.17 and older)
+-- (API 8: a persona up to 32 KB from a Koetama whose hello says so - "agent_persona": 32768; an older one leaves out
+-- an agent whose persona is over 8192 bytes, so the brain sends it the first 8192. The user, 2026-11-19: "I think 8kb
+-- is still too small for rules. maybe it should be 32kb")
+A.PERSONA_MAX = 32768           -- an agent's persona kept, at most
+A.PERSONA_OLD = 8192            -- what a Koetama takes whose hello has no agent_persona
+A.DEF_BUDGET_BIG = 160 * 1024   -- the definitions in one feed to a Koetama taking 256 KB feeds (0.5.17 and later)
 A.LINE_LIFE = 60                -- s a line waits for its reply (the brain)
 A.LINES_MAX = 32
 A.SEND_FOR = 5                  -- (no longer used: definitions go until a feed carrying them is answered)
@@ -131,6 +139,7 @@ A.scores = false       -- the brain's Koetama scores turns (its "caps", on every
 A.functionsMax = A.FUNCTIONS_OLD   -- the functions an agent may have, as the brain's Koetama says (its "caps")
 A.finalOk = false      -- the brain's Koetama ends turns on final results, keeps to max_rounds (its "caps", API 5)
 A.stateMax = A.STATE_OLD   -- an agent's state's most bytes, as the brain's Koetama says (its "caps", API 7)
+A.personaMax = A.PERSONA_OLD   -- an agent's persona's most bytes, as the brain's Koetama says (its "caps", API 8)
 A.ROUNDS_MAX = 16
 A.later = {}           -- agents' lines other agents will hear: {due, uid, name, text, mode, x, z, depth, by}
 
@@ -160,6 +169,12 @@ end
 -- state is cut there (put what matters most first)
 function A.stateBytes()
     return A.stateMax
+end
+
+-- (API 8) an agent's persona's most bytes: 8192 until the brain's Koetama says more (32768). A longer one keeps
+-- up to 32 KB here, and the brain sends the first personamax() of it (put what matters most first)
+function A.personaBytes()
+    return A.personaMax
 end
 
 -- (API) the brain's Koetama scores turns: an agent's criteria do something
@@ -240,7 +255,7 @@ function A.define(id, def)
     end
     if type(def) ~= "table" or type(def.persona) ~= "string" or def.persona == "" then return false, "no persona" end
     local a = A.agents[id] or {id = id, kid = A.kid(id), notes = {}, said = {}}
-    a.persona = T.cutBytes(def.persona, 8192)
+    a.persona = T.cutBytes(def.persona, A.PERSONA_MAX)
     a.name = T.clean(type(def.name) == "string" and def.name or id, C.NAME_LEN)
     if a.name == "" then a.name = id end
     a.entity = def.entity
@@ -536,6 +551,8 @@ function A.handle(kind, t)
         A.finalOk = t.final == true                                                  -- (API 5)
         local sb = math.floor(tonumber(t.state) or A.STATE_OLD)
         A.stateMax = math.max(A.STATE_OLD, math.min(A.STATE_MAX, sb))                -- (API 7)
+        local pb = math.floor(tonumber(t.persona) or A.PERSONA_OLD)
+        A.personaMax = math.max(A.PERSONA_OLD, math.min(A.PERSONA_MAX, pb))          -- (API 8)
         return
     end
     local id, shard = A.split(t.kid)
@@ -675,7 +692,7 @@ function A.setOwner(uid)
     A.owner = uid
     if old and old ~= uid and A.isLocal(old) then SendModRPCToClient(clientRPC("agent_owner"), old, false) end
     if uid and A.isLocal(uid) then SendModRPCToClient(clientRPC("agent_owner"), uid, true) end
-    if not uid then A.state, A.scores, A.stateMax = "ready", false, A.STATE_OLD end
+    if not uid then A.state, A.scores, A.stateMax, A.personaMax = "ready", false, A.STATE_OLD, A.PERSONA_OLD end
 end
 
 -- (server, every second) the master's choice kept fresh; calls the mod never answered dropped
@@ -704,7 +721,8 @@ end
 local function sendCaps()
     local b = B()
     A.down("caps", {scores = b.scores == true and b.llm == true, functions = b.maxFn or A.FUNCTIONS_OLD,
-        final = b.final == true and b.llm == true, state = b.maxState or A.STATE_OLD})
+        final = b.final == true and b.llm == true, state = b.maxState or A.STATE_OLD,
+        persona = b.maxPersona or A.PERSONA_OLD})
 end
 
 -- (client RPC) this game is the brain now (or no longer)
@@ -813,6 +831,10 @@ function A.onHello(features, hello)
     b.final = features and features.agent_final == true or false       -- (API 5: Koetama 0.5.16)
     local sb = math.floor(tonumber(type(hello) == "table" and hello.agent_state) or A.STATE_OLD)
     b.maxState = math.max(1, math.min(A.STATE_MAX, sb))                -- (API 7: Koetama 0.5.18 says 8192)
+    local pb = math.floor(tonumber(type(hello) == "table" and hello.agent_persona) or A.PERSONA_OLD)
+    b.maxPersona = math.max(1, math.min(A.PERSONA_MAX, pb))            -- (API 8)
+    local v = type(hello) == "table" and tostring(hello.version or "") or ""
+    b.bigFeeds = (type(hello) == "table" and hello.agent_state ~= nil) or (v ~= "" and not C.olderThan(v, "0.5.17"))
     b.scorePending, b.decisions = {}, {}         -- (a new Koetama numbers its turns afresh)
     b.llmAt = -1e9                               -- (said to the server at once)
     if b.on then sendCaps() end
@@ -887,11 +909,22 @@ function A.feed(f)
             local def = d.def
             local maxFn = b.maxFn or A.FUNCTIONS_OLD
             local cut = type(def.functions) == "table" and #def.functions > maxFn
-            if (def.criteria and not b.scores) or cut or (def.max_rounds and not b.final) then
+            local maxP = b.maxPersona or A.PERSONA_OLD
+            local long = type(def.persona) == "string" and #def.persona > maxP
+            if (def.criteria and not b.scores) or cut or long or (def.max_rounds and not b.final) then
                 def = {}
                 for k, v in pairs(d.def) do def[k] = v end
                 if not b.scores then def.criteria = nil end    -- (criteria only for a Koetama that scores)
                 if not b.final then def.max_rounds = nil end   -- (API 5: max_rounds only for one that keeps to it)
+            end
+            if long then             -- (API 8: a longer persona than this Koetama takes would leave the agent out)
+                def.persona = T.cutBytes(d.def.persona, maxP)
+                b.cutSaid = b.cutSaid or {}
+                if not b.cutSaid["p:" .. def.id] then
+                    b.cutSaid["p:" .. def.id] = true
+                    print(string.format("[ProxComms] agent %s has a persona of %d bytes; this Koetama takes %d - the "
+                        .. "first %d sent", def.id, #d.def.persona, maxP, maxP))
+                end
             end
             if cut then              -- (API 3: more functions than this Koetama takes would leave the agent out)
                 local fns = J.array({})
@@ -901,13 +934,13 @@ function A.feed(f)
                 if not b.cutSaid[def.id] then
                     b.cutSaid[def.id] = true
                     print(string.format("[ProxComms] agent %s has %d functions; this Koetama takes %d - the first %d "
-                        .. "sent (Koetama 0.5.15 and later take 32)", def.id, #d.def.functions, maxFn, maxFn))
+                        .. "sent (newer Koetamas take more)", def.id, #d.def.functions, maxFn, maxFn))
                 end
             end
             -- (its size as sent - kept while the definition and what this Koetama takes stay the same)
-            local key = tostring(b.scores) .. tostring(b.final) .. tostring(b.maxFn)
+            local key = tostring(b.scores) .. tostring(b.final) .. tostring(b.maxFn) .. tostring(maxP)
             if d.sizeKey ~= key then d.sizeKey, d.size = key, #J.encode(def) end
-            if #defs > 0 and bytes + d.size > A.DEF_BUDGET then break end
+            if #defs > 0 and bytes + d.size > (b.bigFeeds and A.DEF_BUDGET_BIG or A.DEF_BUDGET) then break end
             defs[#defs + 1] = def
             bytes = bytes + d.size
             d.tryAt = t

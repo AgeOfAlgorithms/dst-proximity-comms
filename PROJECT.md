@@ -86,6 +86,13 @@ Started 2026-10-13 from `koetama/docs/handoff-dst-proximity-comms.md`.
   may still hold back, and a live bubble stays up to 4 s (`CL.LIVE_LIFE`). Mods check `ProxComms.version >= 4`.
   devtest: `FAKE_LLM_PY=<file>` (another mod's scripted model), the `villagers` scene. Next (Koetama's side, the
   koetama-d4 session): a function result that ends the turn with no follow-up request.
+- **Agent API 8: personas up to 32 KB, up to 64 functions (2026-11-19, the user via the AI Villagers: "8kb is still too
+  small for rules. maybe it should be 32kb", "ok time to increase the functions to 64 then"):** a shard keeps a
+  persona up to 32768 bytes and 64 functions; the brain sends the first `agent_persona` bytes (8192 when its hello has
+  none: an older Koetama leaves out an agent over it) and the first `agent_functions`; the caps carry `persona`
+  (`ProxComms.personamax()`). Definitions in a feed up to DEF_BUDGET_BIG (160 KB) to a Koetama taking 256 KB feeds
+  (`b.bigFeeds`: 0.5.17 or agent_state), else DEF_BUDGET. Not verified: a ~100 KB definition (32 KB persona, 64
+  functions of 1 KB) in one mod RPC, shard to the brain's client - DST's limit on an RPC string is not known here.
 - **Agent API 7: states up to 8 KB (2026-11-18, for the AI Villagers' "Around you" list of up to 50 kinds):** Koetama
   0.5.18 (koetama-3b) takes an agent line's state up to 8192 bytes (2048 before; a longer one becomes "" whole) and
   its hello says `"agent_state": 8192`; it keeps only the newest state in a conversation. The brain reads it

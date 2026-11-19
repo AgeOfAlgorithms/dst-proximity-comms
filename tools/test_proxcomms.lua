@@ -859,7 +859,7 @@ do
         for _, x in ipairs(fd.to_agent or {}) do if x.agent == kid then lines[#lines + 1] = x end end
         return fd, def, lines
     end
-    eq(AG.API, 7, "agents: API 7")
+    eq(AG.API, 8, "agents: API 8")
     AG.note("pigking", "a note")
     eq(AG.noted("pigking"), 1, "noted: a note waiting")
     AG.note("pigking", nil)
@@ -898,19 +898,19 @@ do
     -- the agent out), one that says 32 gets them all; the shards hear the limit in the caps
     eq(AG.agentFunctions(), 16, "agentfunctions(): 16 before Koetama says more")
     local many = {}
-    for i = 1, 40 do many[i] = {name = "f" .. i, description = "d" .. i, parameters = {type = "object", properties = {}}} end
+    for i = 1, 70 do many[i] = {name = "f" .. i, description = "d" .. i, parameters = {type = "object", properties = {}}} end
     AG.define("cat", {persona = "x", functions = many})
     local cd = upsFor("def", "cat:1")[1]
-    check(cd and #cd.t.functions == 32 and cd.t.functions[32].name == "f32", "functions: the first 32 of 40 kept")
+    check(cd and #cd.t.functions == 64 and cd.t.functions[64].name == "f64", "functions: the first 64 of 70 kept (API 8)")
     AG.onUp("def", J.encode(cd.t))
     local _, catDef = feedFor("cat:1")
     check(catDef and #catDef.functions == 16 and catDef.functions[16].name == "f16" and catDef.criteria == nil,
         "a Koetama without agent_functions: the first 16 functions")
-    check(#AG.brain.defs["cat:1"].def.functions == 32, "(the brain keeps all 32)")
+    check(#AG.brain.defs["cat:1"].def.functions == 64, "(the brain keeps all 64)")
     sentToServer = {}
     AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
     _, catDef = feedFor("cat:1")
-    check(catDef and #catDef.functions == 32, "Koetama 0.5.15 (agent_functions 32): all 32")
+    check(catDef and #catDef.functions == 32 and catDef.functions[32].name == "f32", "Koetama 0.5.15 (agent_functions 32): the first 32")
     local _, dogAgain = feedFor("dog:1")
     check(dogAgain and dogAgain.criteria and #dogAgain.criteria == 2, "(criteria still go with a cut-free definition)")
     local caps32 = downs("caps")[1]
@@ -918,9 +918,19 @@ do
     AG.onDown(ana, "caps", J.encode(caps32))
     eq(AG.agentFunctions(), 32, "agentfunctions(): 32")
     AG.onDown(ana, "caps", J.encode({scores = true, functions = 999}))
-    eq(AG.agentFunctions(), 32, "agentfunctions(): never over 32")
+    eq(AG.agentFunctions(), 64, "agentfunctions(): never over 64")
     AG.onDown(ana, "caps", J.encode({scores = true}))
     eq(AG.agentFunctions(), 16, "caps without functions (an older brain): 16")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 64})
+    _, catDef = feedFor("cat:1")
+    check(catDef and #catDef.functions == 64, "a Koetama that says 64: all 64 (API 8)")
+    local caps64 = downs("caps")[1]
+    check(caps64 and caps64.functions == 64, "caps: 64 functions")
+    AG.onDown(ana, "caps", J.encode(caps64))
+    eq(AG.agentFunctions(), 64, "agentfunctions(): 64")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
     AG.onDown(ana, "caps", J.encode(caps32))
     -- (API 7) states: cut at 2048 until the brain's Koetama says more (0.5.18: "agent_state": 8192), in the caps to
     -- every shard; the brain cuts too, to its own Koetama's (a shard's caps late)
@@ -963,6 +973,56 @@ do
     eq(AG.stateBytes(), 2048, "caps without state (an older brain): 2048")
     AG.define("owl", nil)
     AG.onUp("remove", J.encode({kid = "owl:1"}))
+    -- (API 8) personas: up to 32 KB kept; a Koetama whose hello has no agent_persona gets the first 8192 (a longer one
+    -- would leave the agent out), one that says 32768 gets it all; the shards hear the limit in the caps
+    eq(AG.personaBytes(), 8192, "personamax(): 8192 before Koetama says more")
+    AG.define("sage", {persona = string.rep("r", 40000)})
+    local sd = upsFor("def", "sage:1")[1]
+    eq(sd and #sd.t.persona, 32768, "a persona of 40000 bytes: 32768 kept")
+    AG.onUp("def", J.encode(sd.t))
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", version = "0.5.18", agent_functions = 32, agent_state = 8192})
+    local _, sageDef = feedFor("sage:1")
+    eq(sageDef and #sageDef.persona, 8192, "a Koetama without agent_persona: the first 8192 bytes")
+    eq(#AG.brain.defs["sage:1"].def.persona, 32768, "(the brain keeps all 32768)")
+    check(downs("caps")[1] and downs("caps")[1].persona == 8192, "caps: persona 8192")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", version = "0.5.19", agent_functions = 32,
+        agent_state = 8192, agent_persona = 32768})
+    _, sageDef = feedFor("sage:1")
+    eq(sageDef and #sageDef.persona, 32768, "agent_persona 32768: the whole persona")
+    local capsP = downs("caps")[1]
+    check(capsP and capsP.persona == 32768, "caps: persona 32768 - to every shard")
+    AG.onDown(ana, "caps", J.encode(capsP))
+    eq(AG.personaBytes(), 32768, "personamax(): 32768")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32, persona = 1e6}))
+    eq(AG.personaBytes(), 32768, "personamax(): never over 32768")
+    AG.onDown(ana, "caps", J.encode({scores = true, functions = 32}))
+    eq(AG.personaBytes(), 8192, "caps without persona (an older brain): 8192")
+    -- (several 32 KB definitions: a Koetama taking 256 KB feeds gets up to DEF_BUDGET_BIG of them in one, an older one
+    --  DEF_BUDGET - one at a time)
+    AG.define("sage2", {persona = string.rep("s", 32768)})
+    AG.define("sage3", {persona = string.rep("t", 32768)})
+    AG.onUp("def", J.encode(upsFor("def", "sage2:1")[1].t))
+    AG.onUp("def", J.encode(upsFor("def", "sage3:1")[1].t))
+    local function sages(f)
+        local n = 0
+        for _, x in ipairs(f.agents or {}) do if x.id:find("^sage") then n = n + 1 end end
+        return n
+    end
+    local fd = feedFor("sage:1")
+    eq(sages(fd), 3, "256 KB feeds: three 32 KB personas in one feed")
+    sentToServer = {}
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", version = "0.5.16", agent_functions = 32})
+    fd = feedFor("sage:1")
+    local allCut = true
+    for _, x in ipairs(fd.agents or {}) do if x.id:find("^sage") and #x.persona ~= 8192 then allCut = false end end
+    check(sages(fd) == 3 and allCut, "an older Koetama: the three cut to 8 KB, in one feed (under 36 KB)")
+    for _, id in ipairs({"sage", "sage2", "sage3"}) do
+        AG.define(id, nil)
+        AG.onUp("remove", J.encode({kid = id .. ":1"}))
+    end
+    AG.onHello({llm = true, agent_scores = true}, {type = "hello", agent_functions = 32})
     AG.onDown(ana, "caps", J.encode(caps32))
     AG.define("cat", nil)
     AG.onUp("remove", J.encode({kid = "cat:1"}))

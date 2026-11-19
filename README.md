@@ -118,7 +118,7 @@ lines. Only that admin's Koetama gets what is said near an agent.
 -- server: a pig that follows whoever asks ("Pigman, follow me")
 local ProxComms = GLOBAL.ProxComms               -- (ProxComms.version: 6)
 ProxComms.agent("pigman", {
-    persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 8 KB)
+    persona = "You are a Pigman. You grunt a lot. You follow whoever asks politely.",  -- (who it is: up to 32 KB)
     name = "Pigman",                             -- (in bubbles and the chat)
     entity = pig,                                -- (it hears and speaks where it is; or x = .., z = ..)
     hears = "named",                             -- near (default) / named / engaged / all / none
@@ -167,10 +167,13 @@ ProxComms.agent("pigman", {
   cost: `info.tokens` in `onReply` / `onSay` and `call.tokens` in `onCall` are `{input, output, cached}` (tokens of the
   whole prompt, written, and of the prompt read from the provider's cache). With an older Koetama all of this is
   ignored and every call gets its follow-up, as before.
-- **Functions:** up to 32 an agent (version 3; was 16) with Koetama 0.5.15 or later. An older Koetama takes 16 and
-  would leave out an agent with more, so only its first 16 are sent: put the ones that matter most first.
-  `ProxComms.agentfunctions()` - how many it may have now (16 until the admin's Koetama says 32; the Teardown mod's
-  `proxchat.agentfunctions`).
+- **Functions:** up to 64 an agent (version 8; 32 from version 3, 16 before), as many as the admin's Koetama takes
+  (16 before 0.5.15, then 32, more as its hello says). It would leave out an agent with more, so only the first that
+  many are sent: put the ones that matter most first. `ProxComms.agentfunctions()` - how many it may have now (the
+  Teardown mod's `proxchat.agentfunctions`).
+- **Its persona:** up to 32 KB (version 8) with a Koetama that says so; an older one would leave out an agent whose
+  persona is over 8 KB, so only its first 8 KB are sent. `ProxComms.personamax()` - its most bytes now (8192 until the
+  admin's Koetama says 32768). Put the rules that matter most first.
 - **Its state:** up to 8 KB (version 7) with Koetama 0.5.18 or later; an older Koetama would drop a state over 2 KB
   whole, so it is cut there. `ProxComms.statemax()` - its most bytes now (2048 until the admin's Koetama says 8192).
   A longer state loses its end: put what matters most first. Send the whole current state with each line - Koetama
