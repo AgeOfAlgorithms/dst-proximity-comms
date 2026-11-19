@@ -1764,6 +1764,46 @@ do
     view:OnUpdate(0.03)
     check(higher() == "cid" or h0 == "cid", "one really lower than the other: re-stacked by height")
     ana.z, cid.z = 0, 0
+    -- (the user, 2026-11-18: a player's two bubbles over the head "keep swapping places constantly" while walking: the
+    --  older line's sort height was up to STICK stale, the newer one's fresh - they crossed it on different frames)
+    do
+        local az, cz = ana.z, cid.z
+        cid.z = 12                                      -- (Cid out of the way)
+        CL.bubbles.KU_ana = nil                         -- (her bubbles before: gone)
+        view:OnUpdate(0.03)
+        CL.onLine("KU_ana", "Ana", "the first thing I said, long enough to wrap over two or three lines in its bubble", "s", 130, 10, 0, false)
+        view:OnUpdate(0.03)
+        ana.z = -0.8                                    -- (24 px up: under STICK, her sort height left behind)
+        view:OnUpdate(0.03)
+        CL.onLine("KU_ana", "Ana", "and then this, which is also a long line, so the two bubbles are tall ones", "s", 131, 10, -0.8, false)
+        for _ = 1, 10 do view:OnUpdate(0.03) end
+        local function order()
+            local c, p = view.pool["KU_ana:cur"], view.pool["KU_ana:prev"]
+            return c and p and (c.y < p.y and "new below" or "new above")
+        end
+        eq(order(), "new below", "a speaker's two bubbles: the newest nearest the head, the one before above it")
+        local swaps, last = 0, order()
+        for i = 1, 60 do                                -- (walking down the screen, bobbing)
+            ana.z = -0.8 + i * 0.1 + ((i % 2 == 0) and 0.1 or -0.1)
+            view:OnUpdate(0.03)
+            local o = order()
+            if o ~= last then swaps = swaps + 1 end
+            last = o
+        end
+        eq(swaps, 0, "walking with two bubbles: they never swap")
+        local topSwaps = 0
+        for i = 1, 40 do                                -- (near the screen's top, bobbing: at most one change)
+            ana.z = -13.5 + ((i % 2 == 0) and 0.15 or -0.15)
+            view:OnUpdate(0.03)
+            local o = order()
+            if o ~= last then topSwaps = topSwaps + 1 end
+            last = o
+        end
+        check(topSwaps <= 1, "near the screen's top, bobbing: they change places once at most (" .. topSwaps .. ")")
+        CL.bubbles.KU_ana = nil
+        view:OnUpdate(0.03)
+        ana.z, cid.z = az, cz
+    end
     -- (the user, 2026-11-16: two bubbles docked on the screen's edge, one speaker walking past the other - they
     --  "keep flickering and rapidly switching places": they must glide, and change places once at most)
     do

@@ -379,21 +379,30 @@ function PCBubbles:OnUpdate(dt)
     end
     -- (the stacking order by a sticky height - the user, 2026-11-05: bubbles "fighting for placement and flickering
     --  rapidly": two speakers' heads at nearly one height, bobbing as they hop or walk, swapped the order every frame.
-    --  Each bubble keeps the height it was sorted by until its head moves more than STICK px from it; ties by key)
+    --  Each speaker keeps the height it was sorted by until its head moves more than STICK px from it; ties by who.
+    --  One height for all of a speaker's bubbles - the user, 2026-11-18: a player's two bubbles "keep swapping places
+    --  constantly" while walking: each kept its own, the older line's up to STICK stale, so the two crossed STICK on
+    --  different frames and swapped. A speaker's own bubbles: the newest nearest the head, the line before above it)
     self.sortY = self.sortY or {}
     local seen = {}
     for _, it in ipairs(items) do
-        local was = self.sortY[it.key]
-        local ay = it.ay or 0
-        if was == nil or math.abs(ay - was) > STICK then was = ay end
-        self.sortY[it.key], it.sy, seen[it.key] = was, was, true
+        local who = it.uid or it.key
+        if not seen[who] then
+            local was = self.sortY[who]
+            local ay = it.ay or 0
+            if was == nil or math.abs(ay - was) > STICK then was = ay end
+            self.sortY[who], seen[who] = was, true
+        end
+        it.sy, it.who, it.rank = self.sortY[who], who, it.prev and 1 or 0
     end
-    for key in pairs(self.sortY) do if not seen[key] then self.sortY[key] = nil end end
+    for who in pairs(self.sortY) do if not seen[who] then self.sortY[who] = nil end end
     self.lay = self.lay or {}                 -- key -> its place beside its speaker: kept (ox, oy) and drawn (dx, dy)
     self.lineAt = self.lineAt or {}           -- a line (its start) -> where it was drawn last frame
     local layNow, lineNow = {}, {}
     table.sort(items, function(a, b)
         if a.sy ~= b.sy then return a.sy < b.sy end
+        if a.who ~= b.who then return a.who < b.who end
+        if a.rank ~= b.rank then return a.rank < b.rank end
         return a.key < b.key
     end)
     for _, it in ipairs(items) do
